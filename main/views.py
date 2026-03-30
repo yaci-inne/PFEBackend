@@ -9,8 +9,11 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError
 from django.db.models import Q
+from django.utils import timezone
+from datetime import timedelta
 
-from .models import Utilisateur, Entreprise, CV, Envoi, Offre
+from .models import Utilisateur, Entreprise, CV, Envoi, Offre, EntretienCreneau
+from .services.cv_ai_analyzer import analyze_cv_file
 from .serializers import (
     UtilisateurSerializer,
     UtilisateurReadSerializer,
@@ -22,6 +25,8 @@ from .serializers import (
     EnvoiSerializer,
     EnvoiListSerializer,
     EnvoiStatutSerializer,
+    EntretienCreneauCreateSerializer,
+    EntretienCreneauReadSerializer,
     CustomTokenObtainPairSerializer,
 )
 
@@ -225,7 +230,7 @@ class CVListCreate(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request):
-        cvs = CV.objects.filter(user=request.user).order_by("-dateCreation")
+        cvs = CV.objects.filter(user=request.user, estSupprime=False).order_by("-dateCreation")
         return Response(
             {"count": cvs.count(), "cvs": CVListSerializer(cvs, many=True).data},
             status=status.HTTP_200_OK
@@ -247,7 +252,7 @@ class CVDetail(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get_object(self, pk, request):
-        return get_object_or_404(CV, pk=pk, user=request.user)
+        return get_object_or_404(CV, pk=pk, user=request.user, estSupprime=False)
 
     def get(self, request, pk):
         cv = self.get_object(pk, request)
@@ -272,7 +277,9 @@ class CVDetail(APIView):
     def delete(self, request, pk):
         cv = self.get_object(pk, request)
         cv_nom = cv.nom
-        cv.delete()
+        # Soft delete to preserve candidature history and related statistics.
+        cv.estSupprime = True
+        cv.save(update_fields=["estSupprime"])
         return Response({"message": f'CV "{cv_nom}" supprimé'}, status=status.HTTP_200_OK)
 
 
@@ -483,7 +490,11 @@ class EnvoiListCreate(APIView):
         else:
             return Response({"error": "Accès refusé"}, status=status.HTTP_403_FORBIDDEN)
 
-        qs = qs.select_related("cv", "cv__user", "offre", "offre__entreprise").order_by("-dateEnvoi")
+        qs = (
+            qs.select_related("cv", "cv__user", "offre", "offre__entreprise")
+            .prefetch_related("creneaux", "creneaux__reservePar")
+            .order_by("-dateEnvoi")
+        )
         serializer = EnvoiListSerializer(qs, many=True, context={"request": request})
         return Response({"count": qs.count(), "envois": serializer.data}, status=status.HTTP_200_OK)
 
@@ -515,7 +526,37 @@ class EnvoiListCreate(APIView):
         if len(cleaned_ids) > 100:
             return Response({"error": "Trop d'offres (max 100)"}, status=status.HTTP_400_BAD_REQUEST)
 
-        cv = get_object_or_404(CV, cvId=cv_id, user=request.user)
+        cv = get_object_or_404(CV, cvId=cv_id, user=request.user, estSupprime=False)
+        if cv.type != "cv":
+            return Response(
+                {"error": "Seuls les fichiers de type CV peuvent etre envoyes aux entreprises."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if cv.ai_status == "pending":
+            ai_result = analyze_cv_file(cv.fichier)
+            cv.ai_status = "validated" if ai_result["is_valid"] else "rejected"
+            cv.ai_score = ai_result["score"]
+            cv.ai_has_photo = ai_result["has_photo"]
+            cv.ai_notes = ai_result["notes"]
+            cv.ai_checked_at = timezone.now()
+            cv.save(update_fields=["ai_status", "ai_score", "ai_has_photo", "ai_notes", "ai_checked_at"])
+
+            if not ai_result["is_valid"]:
+                reason = (ai_result.get("reasons") or ["Ce document ne ressemble pas a un CV professionnel."])[0]
+                return Response(
+                    {"error": "Ce CV n'a pas passe la verification IA.", "details": reason},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        if cv.ai_status != "validated":
+            return Response(
+                {
+                    "error": "Ce CV n'a pas passe la verification IA.",
+                    "details": "Mettez a jour le document pour qu'il soit reconnu comme un CV professionnel.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # offres valides : publiées + recevoir ON + non archivée + entreprise autorise globalement
         offres = Offre.objects.filter(
@@ -562,10 +603,29 @@ class EnvoiListCreate(APIView):
         refused_count = len(refused)
 
         if created_count == 0:
+            first_reason = None
+            if refused:
+                first_errors = refused[0].get("errors")
+                if isinstance(first_errors, dict):
+                    parts = []
+                    for value in first_errors.values():
+                        if isinstance(value, (list, tuple)):
+                            parts.extend(str(v) for v in value)
+                        else:
+                            parts.append(str(value))
+                    if parts:
+                        first_reason = " ".join(parts)
+                elif first_errors:
+                    first_reason = str(first_errors)
+
+            message = "Aucune candidature n'a pu etre creee (toutes refusees)."
+            if first_reason:
+                message += f" Motif: {first_reason}"
+
             return Response(
                 {
                     "success": False,
-                    "message": "Aucune candidature n'a pu être créée (toutes refusées).",
+                    "message": message,
                     "created_count": created_count,
                     "refused_count": refused_count,
                     "envois_ids": created_ids,
@@ -643,6 +703,153 @@ class EnvoiDetail(APIView):
         return Response({"message": f"Candidature supprimée: {envoi_info}"}, status=status.HTTP_200_OK)
 
 
+
+
+class EntretienCreneauListCreate(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_envoi(self, request, envoi_id):
+        envoi = get_object_or_404(
+            Envoi.objects.select_related("cv__user", "offre__entreprise"),
+            pk=envoi_id,
+        )
+
+        if request.user.type == "entreprise":
+            if envoi.offre.entreprise != request.user.entreprise:
+                raise PermissionDenied("Acces refuse.")
+        elif request.user.type == "candidat":
+            if envoi.cv.user != request.user:
+                raise PermissionDenied("Acces refuse.")
+        elif not request.user.is_staff:
+            raise PermissionDenied("Acces refuse.")
+
+        return envoi
+
+    def get(self, request, envoi_id):
+        envoi = self._get_envoi(request, envoi_id)
+        qs = envoi.creneaux.all().order_by("startAt")
+        serializer = EntretienCreneauReadSerializer(qs, many=True, context={"request": request})
+        return Response({"count": qs.count(), "creneaux": serializer.data}, status=status.HTTP_200_OK)
+
+    def post(self, request, envoi_id):
+        envoi = self._get_envoi(request, envoi_id)
+        if request.user.type != "entreprise":
+            return Response({"error": "Action reservee aux entreprises."}, status=status.HTTP_403_FORBIDDEN)
+        if envoi.offre.entreprise != request.user.entreprise:
+            raise PermissionDenied("Acces refuse.")
+        if envoi.statut != "accepte":
+            return Response(
+                {"error": "Impossible de proposer un entretien tant que la candidature n'est pas acceptee."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload = request.data
+        is_batch = isinstance(payload, list)
+        serializer = EntretienCreneauCreateSerializer(
+            data=payload,
+            many=is_batch,
+            context={"request": request},
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        if is_batch:
+            created = []
+            for item in serializer.validated_data:
+                created.append(EntretienCreneau.objects.create(envoi=envoi, **item))
+            output = EntretienCreneauReadSerializer(created, many=True, context={"request": request}).data
+            return Response(
+                {"message": f"{len(created)} creneaux proposes avec succes.", "creneaux": output},
+                status=status.HTTP_201_CREATED,
+            )
+
+        creneau = serializer.save(envoi=envoi)
+        output = EntretienCreneauReadSerializer(creneau, context={"request": request}).data
+        return Response(
+            {"message": "Creneau propose avec succes.", "creneau": output},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class EntretienCreneauReserve(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCandidat]
+
+    def post(self, request, creneau_id):
+        creneau = get_object_or_404(
+            EntretienCreneau.objects.select_related("envoi__cv__user", "envoi__offre__entreprise"),
+            pk=creneau_id,
+        )
+
+        if creneau.envoi.cv.user != request.user:
+            raise PermissionDenied("Vous ne pouvez reserver que vos propres entretiens.")
+        if creneau.envoi.statut != "accepte":
+            return Response({"error": "La candidature doit etre acceptee pour reserver un creneau."}, status=status.HTTP_400_BAD_REQUEST)
+        if creneau.estReserve:
+            return Response({"error": "Ce creneau est deja reserve."}, status=status.HTTP_400_BAD_REQUEST)
+        if creneau.startAt <= timezone.now():
+            return Response({"error": "Ce creneau est deja passe."}, status=status.HTTP_400_BAD_REQUEST)
+
+        already_reserved = EntretienCreneau.objects.filter(
+            envoi=creneau.envoi, estReserve=True, reservePar=request.user
+        ).exists()
+        if already_reserved:
+            return Response(
+                {"error": "Vous avez deja reserve un creneau pour cette candidature."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        creneau.estReserve = True
+        creneau.reservePar = request.user
+        creneau.dateReservation = timezone.now()
+        creneau.save(update_fields=["estReserve", "reservePar", "dateReservation"])
+
+        serializer = EntretienCreneauReadSerializer(creneau, context={"request": request})
+        return Response(
+            {"message": "Creneau reserve avec succes.", "creneau": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class EntretienMeetingInfo(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, creneau_id):
+        creneau = get_object_or_404(
+            EntretienCreneau.objects.select_related("envoi__cv__user", "envoi__offre__entreprise"),
+            pk=creneau_id,
+        )
+
+        is_owner_candidat = request.user.type == "candidat" and creneau.envoi.cv.user == request.user
+        is_owner_entreprise = (
+            request.user.type == "entreprise"
+            and hasattr(request.user, "entreprise")
+            and creneau.envoi.offre.entreprise == request.user.entreprise
+        )
+        if not (is_owner_candidat or is_owner_entreprise or request.user.is_staff):
+            raise PermissionDenied("Acces refuse.")
+
+        if not creneau.estReserve:
+            return Response({"error": "Ce creneau n'est pas encore reserve."}, status=status.HTTP_400_BAD_REQUEST)
+
+        room_name = f"pfe-entretien-{creneau.creneauId}"
+        meeting_url = f"https://meet.jit.si/{room_name}"
+
+        now = timezone.now()
+        can_join = (creneau.startAt - timedelta(minutes=10)) <= now <= (creneau.endAt + timedelta(minutes=30))
+
+        return Response(
+            {
+                "creneauId": creneau.creneauId,
+                "room_name": room_name,
+                "meeting_url": meeting_url,
+                "start_at": creneau.startAt,
+                "end_at": creneau.endAt,
+                "can_join": can_join,
+                "mode": creneau.mode,
+                "lieu_ou_lien": creneau.lieuOuLien,
+            },
+            status=status.HTTP_200_OK,
+        )
 # ==========================
 # Dashboard Stats
 # ==========================
@@ -653,8 +860,9 @@ class DashboardStats(APIView):
         user = request.user
 
         if user.type == "candidat":
-            cvs = CV.objects.filter(user=user)
-            envois = Envoi.objects.filter(cv__in=cvs)
+            cvs = CV.objects.filter(user=user, estSupprime=False)
+            # Keep historical stats even when some CVs are deleted.
+            envois = Envoi.objects.filter(cv__user=user)
 
             stats = {
                 "total_cvs": cvs.count(),
@@ -690,7 +898,7 @@ class DashboardStats(APIView):
             stats = {
                 "total_utilisateurs": Utilisateur.objects.count(),
                 "total_entreprises": Entreprise.objects.count(),
-                "total_cvs": CV.objects.count(),
+                "total_cvs": CV.objects.filter(estSupprime=False).count(),
                 "total_offres": Offre.objects.count(),
                 "total_envois": Envoi.objects.count(),
             }
@@ -703,3 +911,5 @@ class DashboardStats(APIView):
             return 0
         reponses = envois.filter(statut__in=["en_attente", "accepte", "refuse"]).count()
         return round((reponses / total) * 100, 2)
+
+

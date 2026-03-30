@@ -103,6 +103,11 @@ class CV(models.Model):
         ("video", "Vidéo"),
         ("portfolio", "Portfolio"),
     ]
+    AI_STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("validated", "Validated"),
+        ("rejected", "Rejected"),
+    ]
 
     cvId = models.AutoField(primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cvs")
@@ -110,6 +115,12 @@ class CV(models.Model):
     nom = models.CharField(max_length=100)
     fichier = models.FileField(upload_to="cvs/")
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="cv")
+    estSupprime = models.BooleanField(default=False)
+    ai_status = models.CharField(max_length=20, choices=AI_STATUS_CHOICES, default="pending")
+    ai_score = models.PositiveSmallIntegerField(default=0)
+    ai_has_photo = models.BooleanField(default=False)
+    ai_notes = models.TextField(blank=True, default="")
+    ai_checked_at = models.DateTimeField(null=True, blank=True)
 
     dateCreation = models.DateTimeField(auto_now_add=True)
 
@@ -278,3 +289,41 @@ class Envoi(models.Model):
 
     def __str__(self):
         return f"{self.cv.nom} → {self.offre.titre}"
+
+
+
+
+class EntretienCreneau(models.Model):
+    MODE_CHOICES = [
+        ("visio", "Visio"),
+        ("site", "Sur site"),
+    ]
+
+    creneauId = models.AutoField(primary_key=True)
+    envoi = models.ForeignKey(Envoi, on_delete=models.CASCADE, related_name="creneaux")
+    startAt = models.DateTimeField()
+    endAt = models.DateTimeField()
+    mode = models.CharField(max_length=20, choices=MODE_CHOICES, default="visio")
+    lieuOuLien = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+
+    estReserve = models.BooleanField(default=False)
+    reservePar = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="entretiens_reserves",
+    )
+    dateReservation = models.DateTimeField(null=True, blank=True)
+    dateCreation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["startAt"]),
+            models.Index(fields=["estReserve"]),
+            models.Index(fields=["envoi", "startAt"]),
+        ]
+
+    def __str__(self):
+        return f"Entretien #{self.creneauId} - Envoi {self.envoi_id}"

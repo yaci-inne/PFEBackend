@@ -31,6 +31,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'main.middleware.StandardizeApiErrorMiddleware',
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -75,6 +76,7 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
     ],
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
+    'EXCEPTION_HANDLER': 'main.exceptions.custom_exception_handler',
 }
 
 # ==========================

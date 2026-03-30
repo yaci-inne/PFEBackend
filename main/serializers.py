@@ -17,6 +17,7 @@ from .models import (
     Competence,
     Langue,
 )
+from .services.cv_ai_analyzer import analyze_cv_file
 
 
 # ========================
@@ -224,8 +225,25 @@ class CVSerializer(serializers.ModelSerializer):
             "dateCreation",
             "user_username",
             "taille_fichier",
+            "ai_status",
+            "ai_score",
+            "ai_has_photo",
+            "ai_notes",
+            "ai_checked_at",
         ]
-        read_only_fields = ["cvId", "dateCreation", "user", "user_username", "fichier_url", "taille_fichier"]
+        read_only_fields = [
+            "cvId",
+            "dateCreation",
+            "user",
+            "user_username",
+            "fichier_url",
+            "taille_fichier",
+            "ai_status",
+            "ai_score",
+            "ai_has_photo",
+            "ai_notes",
+            "ai_checked_at",
+        ]
         extra_kwargs = {
             "nom": {"required": True},
             "type": {"required": True},
@@ -255,9 +273,10 @@ class CVSerializer(serializers.ModelSerializer):
     def validate(self, data):
         fichier = data.get("fichier") or (self.instance.fichier if self.instance else None)
         type_cv = data.get("type") or (self.instance.type if self.instance else None)
+        incoming_file = data.get("fichier")
 
         valid_extensions = {
-            "cv": [".pdf", ".doc", ".docx"],
+            "cv": [".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".jfif"],
             "video": [".mp4", ".avi", ".mov", ".mkv"],
             "portfolio": [".pdf", ".zip", ".rar"],
         }
@@ -273,19 +292,45 @@ class CVSerializer(serializers.ModelSerializer):
                     )
                 })
 
+        if incoming_file and type_cv == "cv":
+            ai_result = analyze_cv_file(incoming_file)
+            if not ai_result["is_valid"]:
+                reasons = ai_result.get("reasons") or ["Le fichier ne ressemble pas a un CV professionnel."]
+                raise serializers.ValidationError({
+                    "fichier": "Analyse IA refusee: " + " ".join(reasons)
+                })
+            self._ai_result = ai_result
+
         return data
 
     def create(self, validated_data):
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             validated_data["user"] = request.user
+        ai_result = getattr(self, "_ai_result", None)
+        if ai_result:
+            validated_data["ai_status"] = "validated"
+            validated_data["ai_score"] = ai_result["score"]
+            validated_data["ai_has_photo"] = ai_result["has_photo"]
+            validated_data["ai_notes"] = ai_result["notes"]
+            validated_data["ai_checked_at"] = timezone.now()
         return super().create(validated_data)
 
 
 class CVListSerializer(serializers.ModelSerializer):
     class Meta:
         model = CV
-        fields = ["cvId", "nom", "type", "dateCreation"]
+        fields = [
+            "cvId",
+            "nom",
+            "type",
+            "dateCreation",
+            "ai_status",
+            "ai_score",
+            "ai_has_photo",
+            "ai_notes",
+            "ai_checked_at",
+        ]
         read_only_fields = fields
 
 
@@ -472,7 +517,7 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import CV, Offre, Envoi
+from .models import CV, Offre, Envoi, EntretienCreneau
 
 
 class EnvoiSerializer(serializers.ModelSerializer):
@@ -584,20 +629,111 @@ class EnvoiSerializer(serializers.ModelSerializer):
 
 class EnvoiListSerializer(serializers.ModelSerializer):
     cv_nom = serializers.CharField(source="cv.nom", read_only=True)
+    cv_fichier_url = serializers.SerializerMethodField()
     offre_titre = serializers.CharField(source="offre.titre", read_only=True)
+    offre_poste = serializers.CharField(source="offre.poste", read_only=True)
+    offre_domaine = serializers.CharField(source="offre.domaine", read_only=True)
+    offre_specialite = serializers.CharField(source="offre.specialite", read_only=True)
+    offre_type_contrat = serializers.CharField(source="offre.type_contrat", read_only=True)
+    offre_mode_travail = serializers.CharField(source="offre.mode_travail", read_only=True)
+    offre_ville = serializers.CharField(source="offre.ville", read_only=True)
+    offre_pays = serializers.CharField(source="offre.pays", read_only=True)
     entreprise_nom = serializers.CharField(source="offre.entreprise.nomEntreprise", read_only=True)
     candidat_nom = serializers.SerializerMethodField()
+    creneaux = serializers.SerializerMethodField()
 
     class Meta:
         model = Envoi
-        fields = ["envoiId", "cv_nom", "offre_titre", "entreprise_nom", "candidat_nom", "dateEnvoi", "statut"]
+        fields = [
+            "envoiId",
+            "cv_nom",
+            "cv_fichier_url",
+            "offre_titre",
+            "offre_poste",
+            "offre_domaine",
+            "offre_specialite",
+            "offre_type_contrat",
+            "offre_mode_travail",
+            "offre_ville",
+            "offre_pays",
+            "entreprise_nom",
+            "candidat_nom",
+            "creneaux",
+            "dateEnvoi",
+            "statut",
+        ]
         read_only_fields = fields
+
+    def get_cv_fichier_url(self, obj):
+        request = self.context.get("request")
+        if request and obj.cv and obj.cv.fichier:
+            return request.build_absolute_uri(obj.cv.fichier.url)
+        return None
 
     def get_candidat_nom(self, obj):
         user = obj.cv.user
         if user.nom and user.prenom:
             return f"{user.prenom} {user.nom}"
         return user.username
+
+    def get_creneaux(self, obj):
+        request = self.context.get("request")
+        creneaux = obj.creneaux.all().order_by("startAt")
+        return EntretienCreneauReadSerializer(creneaux, many=True, context={"request": request}).data
+
+
+class EntretienCreneauCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EntretienCreneau
+        fields = ["creneauId", "startAt", "endAt", "mode", "lieuOuLien", "note"]
+        read_only_fields = ["creneauId"]
+        extra_kwargs = {
+            "endAt": {"required": False, "allow_null": True},
+        }
+
+    def validate(self, data):
+        start_at = data.get("startAt")
+        end_at = data.get("endAt")
+        if start_at and not end_at:
+            # If end time is omitted, default interview duration is 60 minutes.
+            data["endAt"] = start_at + timedelta(minutes=60)
+            end_at = data["endAt"]
+        if start_at and end_at and end_at <= start_at:
+            raise serializers.ValidationError("Le creneau est invalide: heure de fin <= heure de debut.")
+        return data
+
+
+class EntretienCreneauReadSerializer(serializers.ModelSerializer):
+    reserve_par_nom = serializers.SerializerMethodField()
+    duree_minutes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EntretienCreneau
+        fields = [
+            "creneauId",
+            "startAt",
+            "endAt",
+            "mode",
+            "lieuOuLien",
+            "note",
+            "estReserve",
+            "dateReservation",
+            "reserve_par_nom",
+            "duree_minutes",
+        ]
+        read_only_fields = fields
+
+    def get_reserve_par_nom(self, obj):
+        user = obj.reservePar
+        if not user:
+            return None
+        if user.prenom and user.nom:
+            return f"{user.prenom} {user.nom}"
+        return user.username
+
+    def get_duree_minutes(self, obj):
+        delta = obj.endAt - obj.startAt
+        return int(delta.total_seconds() // 60)
 
 
 class EnvoiStatutSerializer(serializers.ModelSerializer):
@@ -606,7 +742,7 @@ class EnvoiStatutSerializer(serializers.ModelSerializer):
         fields = ["statut"]
 
     def validate_statut(self, value):
-        valid_statuts = ["en_attente", "accepte", "refuse"]
+        valid_statuts = ["envoye", "en_attente", "accepte", "refuse"]
         if value not in valid_statuts:
             raise serializers.ValidationError(f"Statut invalide. Choix : {', '.join(valid_statuts)}")
         return value

@@ -22,6 +22,9 @@ from .views import (
     # Envoi
     EnvoiListCreate,
     EnvoiDetail,
+    EntretienCreneauListCreate,
+    EntretienCreneauReserve,
+    EntretienMeetingInfo,
 
     # Statistiques
     DashboardStats,
@@ -65,6 +68,9 @@ urlpatterns = [
     # ==========================
     path("envois/", EnvoiListCreate.as_view(), name="envoi-list-create"),
     path("envois/<int:pk>/", EnvoiDetail.as_view(), name="envoi-detail"),
+    path("envois/<int:envoi_id>/creneaux/", EntretienCreneauListCreate.as_view(), name="entretien-creneau-list-create"),
+    path("creneaux/<int:creneau_id>/reserver/", EntretienCreneauReserve.as_view(), name="entretien-creneau-reserver"),
+    path("creneaux/<int:creneau_id>/meeting/", EntretienMeetingInfo.as_view(), name="entretien-meeting-info"),
 
     # ==========================
     # Dashboard Stats
