@@ -288,14 +288,14 @@ class CVDetail(APIView):
 # ==========================
 class OffreList(APIView):
     """
-    GET: Offres visibles pour candidats (estPubliee=True + recevoirCandidatures=True + pas archivée)
+    GET: Offres visibles pour candidats ( recevoirCandidatures=True + pas archivée)
     + filtres query params
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         qs = Offre.objects.filter(
-            estPubliee=True,
+          
             recevoirCandidatures=True,
             estArchivee=False,
             entreprise__recevoirCandidatures=True,
@@ -378,8 +378,8 @@ class OffreDetail(APIView):
 
     def _is_visible_to_candidates(self, offre):
         return (
-            offre.estPubliee
-            and offre.recevoirCandidatures
+            
+            offre.recevoirCandidatures
             and not offre.estArchivee
             and offre.entreprise.recevoirCandidatures
         )
@@ -561,7 +561,7 @@ class EnvoiListCreate(APIView):
         # offres valides : publiées + recevoir ON + non archivée + entreprise autorise globalement
         offres = Offre.objects.filter(
             offreId__in=cleaned_ids,
-            estPubliee=True,
+          
             recevoirCandidatures=True,
             estArchivee=False,
             entreprise__recevoirCandidatures=True,
@@ -913,3 +913,40 @@ class DashboardStats(APIView):
         return round((reponses / total) * 100, 2)
 
 
+
+class EntretienCreneauAnnuler(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, creneau_id):
+        creneau = get_object_or_404(
+            EntretienCreneau.objects.select_related("envoi__cv__user", "envoi__offre__entreprise"),
+            pk=creneau_id,
+        )
+
+        # Vérification accès : candidat propriétaire OU entreprise propriétaire de l'offre
+        if request.user.type == "candidat":
+            if creneau.envoi.cv.user != request.user:
+                raise PermissionDenied("Acces refuse.")
+        elif request.user.type == "entreprise":
+            if creneau.envoi.offre.entreprise != request.user.entreprise:
+                raise PermissionDenied("Acces refuse.")
+        else:
+            raise PermissionDenied("Acces refuse.")
+
+        if not creneau.estReserve:
+            return Response(
+                {"error": "Ce creneau n'est pas reserve."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if creneau.startAt <= timezone.now():
+            return Response(
+                {"error": "Impossible d'annuler un creneau deja passe."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        creneau.estReserve = False
+        creneau.reservePar = None
+        creneau.dateReservation = None
+        creneau.save(update_fields=["estReserve", "reservePar", "dateReservation"])
+
+        return Response({"message": "Creneau annule avec succes."}, status=status.HTTP_200_OK)

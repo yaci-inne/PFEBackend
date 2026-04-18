@@ -223,7 +223,7 @@ class Offre(models.Model):
 
     # logique bouton / publication
     recevoirCandidatures = models.BooleanField(default=False)  # bouton OFF par défaut
-    estPubliee = models.BooleanField(default=False)
+   
     estArchivee = models.BooleanField(default=False)
 
     dateLimite = models.DateField(null=True, blank=True)
@@ -238,7 +238,7 @@ class Offre(models.Model):
             models.Index(fields=["type_contrat"]),
             models.Index(fields=["mode_travail"]),
             models.Index(fields=["niveau"]),
-            models.Index(fields=["estPubliee", "recevoirCandidatures", "estArchivee"]),
+            models.Index(fields=[ "recevoirCandidatures", "estArchivee"]),
         ]
 
     def __str__(self):

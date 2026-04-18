@@ -406,7 +406,7 @@ class OffreSerializer(serializers.ModelSerializer):
             "pays",
             "relance_days",
             "recevoirCandidatures",
-            "estPubliee",
+            
             "estArchivee",
             "dateLimite",
             "dateCreation",
@@ -492,7 +492,7 @@ class OffreListSerializer(serializers.ModelSerializer):
             "ville",
             "pays",
             "recevoirCandidatures",
-            "estPubliee",
+            
             "estArchivee",
             "entreprise_id",
             "entreprise_nom",
@@ -590,8 +590,7 @@ class EnvoiSerializer(serializers.ModelSerializer):
         if bool(getattr(value, "estArchivee", False)):
             raise serializers.ValidationError("Cette offre est archivée.")
 
-        if not value.estPubliee:
-            raise serializers.ValidationError("Cette offre n'est pas publiée.")
+        
 
         return value
 

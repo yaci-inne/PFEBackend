@@ -111,7 +111,7 @@ class OffreAdmin(admin.ModelAdmin):
         "ville",
         "pays",
         "recevoirCandidatures",
-        "estPubliee",
+        
         "dateCreation",
     )
 
@@ -123,7 +123,7 @@ class OffreAdmin(admin.ModelAdmin):
         "ville",
         "pays",
         "recevoirCandidatures",
-        "estPubliee",
+       
         "dateCreation",
     )
 
@@ -147,7 +147,7 @@ class OffreAdmin(admin.ModelAdmin):
         )}),
         ("Compétences & langues", {"fields": ("competences", "langues")}),
         ("Localisation", {"fields": ("ville", "pays")}),
-        ("Paramètres", {"fields": ("recevoirCandidatures", "estPubliee")}),
+        ("Paramètres", {"fields": ("recevoirCandidatures",)}),
         ("Dates", {"fields": ("dateCreation",)}),
     )
 
@@ -187,7 +187,7 @@ class EnvoiAdmin(admin.ModelAdmin):
         "offre__ville",
         "offre__pays",
         "offre__recevoirCandidatures",
-        "offre__estPubliee",
+        
     )
 
     search_fields = (

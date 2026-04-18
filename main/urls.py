@@ -27,8 +27,10 @@ from .views import (
     EntretienMeetingInfo,
 
     # Statistiques
-    DashboardStats,
+    DashboardStats,EntretienCreneauAnnuler
 )
+
+
 
 app_name = "main"
 
@@ -76,5 +78,7 @@ urlpatterns = [
     # Dashboard Stats
     # ==========================
     path("dashboard/stats/", DashboardStats.as_view(), name="dashboard-stats"),
+    path("creneaux/<int:creneau_id>/annuler/", EntretienCreneauAnnuler.as_view(), name="entretien-creneau-annuler"),
+
     
 ]
