@@ -25,5 +25,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('',include('main.urls')),
     path('api/accessToken/',CustomTokenObtainPairView.as_view(),name='tokenAccess'),
-    path('api/refreshToken/',TokenRefreshView.as_view(),name='tokenRefresh')
+    path('api/refreshToken/',TokenRefreshView.as_view(),name='tokenRefresh'),
+    path('api/health/', health_check, name='health_check'),
+    path('api/sparql/test/', test_sparql, name='test_sparql'),
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

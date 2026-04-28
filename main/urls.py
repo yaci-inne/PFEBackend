@@ -1,5 +1,11 @@
 # main/urls.py
 from django.urls import path
+from .views_auth import (
+    RegisterView,
+    VerifyEmailView,
+    ForgotPasswordView,
+    ResetPasswordView
+)
 from .views import (
     # Utilisateur
     UtilisateurListCreate,
@@ -79,6 +85,11 @@ urlpatterns = [
     # ==========================
     path("dashboard/stats/", DashboardStats.as_view(), name="dashboard-stats"),
     path("creneaux/<int:creneau_id>/annuler/", EntretienCreneauAnnuler.as_view(), name="entretien-creneau-annuler"),
-
-    
+    # ==========================
+    # Authentication with Email
+    # ==========================
+    path("api/auth/register/", RegisterView.as_view(), name="auth-register"),
+    path("api/auth/verify-email/", VerifyEmailView.as_view(), name="auth-verify-email"),
+    path("api/auth/forgot-password/", ForgotPasswordView.as_view(), name="auth-forgot-password"),
+    path("api/auth/reset-password/", ResetPasswordView.as_view(), name="auth-reset-password"),
 ]

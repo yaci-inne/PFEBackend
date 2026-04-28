@@ -1,12 +1,21 @@
+# backend/settings.py
 from pathlib import Path
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-)em7o1ual^r7-$4hwpe8r_c@hdau75=6sa5(bdz64!wj67yyy1'
-DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-)em7o1ual^r7-$4hwpe8r_c@hdau75=6sa5(bdz64!wj67yyy1')
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
+
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com,.vercel.app').split(',')
 
 INSTALLED_APPS = [
     'main',
@@ -23,8 +32,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware', 
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Pour fichiers statiques
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -52,7 +62,25 @@ TEMPLATES = [
 ]
 
 # ==========================
-# REST FRAMEWORK - CONTRAINTES SUPPRIMÉES
+# CORS CONFIGURATION (MODIFIÉ POUR VERCEL)
+# ==========================
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://*.vercel.app",
+    "https://*.onrender.com",
+]
+
+# Ajoutez l'URL de votre frontend déployé (à remplacer après déploiement)
+# CORS_ALLOWED_ORIGINS.append("https://votre-frontend.vercel.app")
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Permet tout en développement
+
+# ==========================
+# REST FRAMEWORK
 # ==========================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -64,12 +92,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
-    
-    # --- LES LIMITES SONT DÉSACTIVÉES ICI ---
-    'DEFAULT_THROTTLE_CLASSES': [], 
+    'DEFAULT_THROTTLE_CLASSES': [],
     'DEFAULT_THROTTLE_RATES': {},
-    # ----------------------------------------
-    
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
         'rest_framework.parsers.MultiPartParser',
@@ -83,7 +107,7 @@ REST_FRAMEWORK = {
 # JWT CONFIGURATION
 # ==========================
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=5),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -93,38 +117,48 @@ SIMPLE_JWT = {
 }
 
 # ==========================
-# DATABASE (PostgreSQL)
+# DATABASE (PostgreSQL - CONFIGURATION POUR RENDER)
 # ==========================
+# Render fournit automatiquement DATABASE_URL
+import dj_database_url
+
 DATABASES = {
-    'default': {
+    'default': dj_database_url.config(
+        default=os.getenv('DATABASE_URL', 'postgresql://postgres:yassine@localhost:5432/pfe'),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+}
+
+# Pour PostgreSQL local (développement)
+if DEBUG:
+    DATABASES['default'] = {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'PFE',
-        'USER': 'postgres',
-        'PASSWORD': 'rayan',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'NAME': os.getenv('DB_NAME', 'pfe'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'yassine'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
         'ATOMIC_REQUESTS': True,
         'CONN_MAX_AGE': 600,
     }
-}
 
 AUTH_USER_MODEL = 'main.Utilisateur'
 
 # ==========================
-# CORS CONFIGURATION
+# SPARQL CONFIGURATION (NOUVEAU)
 # ==========================
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-CORS_ALLOW_CREDENTIALS = True
+SPARQL_ENDPOINT = os.getenv('SPARQL_ENDPOINT', 'http://localhost:7200/repositories/mon_repo')
+SPARQL_USERNAME = os.getenv('SPARQL_USERNAME', '')
+SPARQL_PASSWORD = os.getenv('SPARQL_PASSWORD', '')
 
 # ==========================
 # FILES & STATIC
 # ==========================
 STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
@@ -138,4 +172,33 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-snowflake',
     }
+}
+
+# ==========================
+# EMAIL CONFIGURATION (Pour production)
+# ==========================
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'yaci.gaham@gmail.com')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'tpmvxyarzgrexone')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@autocandidature.com')
+
+# FRONTEND URL pour les emails
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5174')
+
+# Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
 }

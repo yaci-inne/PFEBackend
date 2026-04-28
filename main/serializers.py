@@ -93,15 +93,20 @@ class UtilisateurSerializer(serializers.ModelSerializer):
 
         return data
 
+    # In your UtilisateurSerializer class, modify the create method:
     def create(self, validated_data):
         validated_data.pop("password_confirm", None)
         password = validated_data.pop("password")
-
-        # Utiliser le manager si tu veux (create_user), sinon ok:
+        
         user = Utilisateur(**validated_data)
         user.set_password(password)
-        user.is_active = True
+        user.is_active = False  # Set to False - requires email verification
         user.save()
+        
+        # Import here to avoid circular import
+        from .services.email_service import EmailService
+        EmailService.send_verification_email(user)
+        
         return user
 
     def update(self, instance, validated_data):
