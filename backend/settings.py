@@ -34,7 +34,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Pour fichiers statiques
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -62,22 +62,46 @@ TEMPLATES = [
 ]
 
 # ==========================
-# CORS CONFIGURATION (MODIFIÉ POUR VERCEL)
+# CORS CONFIGURATION - CORRIGÉE
 # ==========================
+
+# 🔥 ACTIVATION COMPLÈTE DE CORS - SOLUTION POUR VERCEL
+CORS_ALLOW_ALL_ORIGINS = True  # 👈 CRITIQUE : Changé de DEBUG à True
+CORS_ALLOW_CREDENTIALS = True
+
+# Liste des origines spécifiquement autorisées
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://pfe-frontend-psi.vercel.app",  # Votre frontend Vercel
     "https://*.vercel.app",
     "https://*.onrender.com",
 ]
 
-# Ajoutez l'URL de votre frontend déployé (à remplacer après déploiement)
-# CORS_ALLOWED_ORIGINS.append("https://votre-frontend.vercel.app")
+# Méthodes HTTP autorisées
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
 
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Permet tout en développement
+# En-têtes HTTP autorisés
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # ==========================
 # REST FRAMEWORK
@@ -119,7 +143,6 @@ SIMPLE_JWT = {
 # ==========================
 # DATABASE (PostgreSQL - CONFIGURATION POUR RENDER)
 # ==========================
-# Render fournit automatiquement DATABASE_URL
 import dj_database_url
 
 DATABASES = {
@@ -130,7 +153,7 @@ DATABASES = {
     )
 }
 
-# Pour PostgreSQL local (développement)
+# Configuration locale (développement)
 if DEBUG:
     DATABASES['default'] = {
         'ENGINE': 'django.db.backends.postgresql',
@@ -146,7 +169,7 @@ if DEBUG:
 AUTH_USER_MODEL = 'main.Utilisateur'
 
 # ==========================
-# SPARQL CONFIGURATION (NOUVEAU)
+# SPARQL CONFIGURATION
 # ==========================
 SPARQL_ENDPOINT = os.getenv('SPARQL_ENDPOINT', 'http://localhost:7200/repositories/mon_repo')
 SPARQL_USERNAME = os.getenv('SPARQL_USERNAME', '')
@@ -175,7 +198,7 @@ CACHES = {
 }
 
 # ==========================
-# EMAIL CONFIGURATION (Pour production)
+# EMAIL CONFIGURATION
 # ==========================
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
@@ -186,7 +209,7 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'tpmvxyarzgrexone')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@autocandidature.com')
 
 # FRONTEND URL pour les emails
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5174')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://pfe-frontend-psi.vercel.app')
 
 # Logging
 LOGGING = {
