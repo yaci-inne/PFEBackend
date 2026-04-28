@@ -141,32 +141,37 @@ SIMPLE_JWT = {
 }
 
 # ==========================
-# DATABASE (PostgreSQL - CONFIGURATION POUR RENDER)
+# DATABASE (PostgreSQL)
 # ==========================
 import dj_database_url
+import os
 
-DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL', 'postgresql://postgres:yassine@localhost:5432/pfe'),
-        conn_max_age=600,
-        conn_health_checks=True,
-    )
-}
+# Utilisez TOUJOURS DATABASE_URL en priorité
+DATABASE_URL = os.getenv('DATABASE_URL')
 
-# Configuration locale (développement)
-if DEBUG:
-    DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'pfe'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'yassine'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
-        'ATOMIC_REQUESTS': True,
-        'CONN_MAX_AGE': 600,
+if DATABASE_URL:
+    # Production sur Render
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-
-AUTH_USER_MODEL = 'main.Utilisateur'
+else:
+    # Développement local
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'pfe'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', 'yassine'),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'ATOMIC_REQUESTS': True,
+            'CONN_MAX_AGE': 600,
+        }
+    }
 
 # ==========================
 # SPARQL CONFIGURATION
