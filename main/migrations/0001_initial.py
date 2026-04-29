@@ -11,10 +11,36 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('auth', '0012_alter_user_first_name_max_length'),
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
+        # 1. Créer Utilisateur EN PREMIER
+        migrations.CreateModel(
+            name='Utilisateur',
+            fields=[
+                ('password', models.CharField(max_length=128, verbose_name='password')),
+                ('last_login', models.DateTimeField(blank=True, null=True, verbose_name='last login')),
+                ('is_superuser', models.BooleanField(default=False, help_text='Designates that this user has all permissions without explicitly assigning them.', verbose_name='superuser status')),
+                ('id', models.AutoField(primary_key=True, serialize=False)),
+                ('username', models.CharField(max_length=100, unique=True)),
+                ('email', models.EmailField(max_length=254, unique=True)),
+                ('type', models.CharField(choices=[('invite', 'Invité'), ('candidat', 'Candidat'), ('entreprise', 'Entreprise')], default='invite', max_length=20)),
+                ('nom', models.CharField(blank=True, max_length=100, null=True)),
+                ('prenom', models.CharField(blank=True, max_length=100, null=True)),
+                ('telephone', models.CharField(blank=True, max_length=20, null=True)),
+                ('dateNaissance', models.DateField(blank=True, null=True)),
+                ('photoProfil', models.ImageField(blank=True, null=True, upload_to='photos_profil/')),
+                ('is_active', models.BooleanField(default=True)),
+                ('is_staff', models.BooleanField(default=False)),
+                ('dateInscription', models.DateTimeField(auto_now_add=True)),
+                ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to.', related_name='custom_user_set', to='auth.group', verbose_name='groups')),
+                ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='custom_user_permissions_set', to='auth.permission', verbose_name='user permissions')),
+            ],
+            options={
+                'abstract': False,
+            },
+        ),
+        # 2. Modèles simples sans dépendances
         migrations.CreateModel(
             name='Competence',
             fields=[
@@ -29,6 +55,7 @@ class Migration(migrations.Migration):
                 ('nom', models.CharField(max_length=50, unique=True)),
             ],
         ),
+        # 3. CV dépend de Utilisateur
         migrations.CreateModel(
             name='CV',
             fields=[
@@ -46,6 +73,7 @@ class Migration(migrations.Migration):
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='cvs', to=settings.AUTH_USER_MODEL)),
             ],
         ),
+        # 4. Entreprise dépend de Utilisateur
         migrations.CreateModel(
             name='Entreprise',
             fields=[
@@ -58,6 +86,7 @@ class Migration(migrations.Migration):
                 ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='entreprise', to=settings.AUTH_USER_MODEL)),
             ],
         ),
+        # 5. Offre dépend de Entreprise, Competence, Langue
         migrations.CreateModel(
             name='Offre',
             fields=[
@@ -92,6 +121,7 @@ class Migration(migrations.Migration):
                 ('langues', models.ManyToManyField(blank=True, to='main.langue')),
             ],
         ),
+        # 6. Envoi dépend de CV et Offre
         migrations.CreateModel(
             name='Envoi',
             fields=[
@@ -107,31 +137,7 @@ class Migration(migrations.Migration):
                 ('offre', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='envois', to='main.offre')),
             ],
         ),
-        migrations.CreateModel(
-            name='Utilisateur',
-            fields=[
-                ('password', models.CharField(max_length=128, verbose_name='password')),
-                ('last_login', models.DateTimeField(blank=True, null=True, verbose_name='last login')),
-                ('is_superuser', models.BooleanField(default=False, help_text='Designates that this user has all permissions without explicitly assigning them.', verbose_name='superuser status')),
-                ('id', models.AutoField(primary_key=True, serialize=False)),
-                ('username', models.CharField(max_length=100, unique=True)),
-                ('email', models.EmailField(max_length=254, unique=True)),
-                ('type', models.CharField(choices=[('invite', 'Invité'), ('candidat', 'Candidat'), ('entreprise', 'Entreprise')], default='invite', max_length=20)),
-                ('nom', models.CharField(blank=True, max_length=100, null=True)),
-                ('prenom', models.CharField(blank=True, max_length=100, null=True)),
-                ('telephone', models.CharField(blank=True, max_length=20, null=True)),
-                ('dateNaissance', models.DateField(blank=True, null=True)),
-                ('photoProfil', models.ImageField(blank=True, null=True, upload_to='photos_profil/')),
-                ('is_active', models.BooleanField(default=True)),
-                ('is_staff', models.BooleanField(default=False)),
-                ('dateInscription', models.DateTimeField(auto_now_add=True)),
-                ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to.', related_name='custom_user_set', to='auth.group', verbose_name='groups')),
-                ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='custom_user_permissions_set', to='auth.permission', verbose_name='user permissions')),
-            ],
-            options={
-                'abstract': False,
-            },
-        ),
+        # 7. EntretienCreneau dépend de Envoi et Utilisateur
         migrations.CreateModel(
             name='EntretienCreneau',
             fields=[
@@ -151,6 +157,7 @@ class Migration(migrations.Migration):
                 'indexes': [models.Index(fields=['startAt'], name='main_entret_startAt_81a236_idx'), models.Index(fields=['estReserve'], name='main_entret_estRese_23b30e_idx'), models.Index(fields=['envoi', 'startAt'], name='main_entret_envoi_i_cf18ca_idx')],
             },
         ),
+        # 8. Index
         migrations.AddIndex(
             model_name='offre',
             index=models.Index(fields=['domaine'], name='main_offre_domaine_03f9e6_idx'),
