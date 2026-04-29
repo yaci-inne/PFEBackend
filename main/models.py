@@ -1,6 +1,6 @@
 from django.db import models
 from django.conf import settings
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager, Group, Permission
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
@@ -27,7 +27,7 @@ class UtilisateurManager(BaseUserManager):
 
 
 # =========================
-# Utilisateur (MODIFIÉ POUR ÉVITER LES CONFLITS)
+# Utilisateur
 # =========================
 class Utilisateur(AbstractBaseUser, PermissionsMixin):
     TYPE_CHOICES = [
@@ -58,22 +58,6 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = "username"
     REQUIRED_FIELDS = ["email"]
-
-    # 👇 AJOUTEZ CES LIGNES POUR ÉVITER LES CONFLITS AVEC auth.User
-    groups = models.ManyToManyField(
-        Group,
-        related_name='custom_user_set',  # Changé pour éviter conflit
-        blank=True,
-        verbose_name='groups',
-        help_text='The groups this user belongs to.',
-    )
-    user_permissions = models.ManyToManyField(
-        Permission,
-        related_name='custom_user_permissions_set',  # Changé pour éviter conflit
-        blank=True,
-        verbose_name='user permissions',
-        help_text='Specific permissions for this user.',
-    )
 
     def __str__(self):
         return self.username
@@ -305,6 +289,8 @@ class Envoi(models.Model):
 
     def __str__(self):
         return f"{self.cv.nom} → {self.offre.titre}"
+
+
 
 
 class EntretienCreneau(models.Model):
