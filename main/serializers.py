@@ -601,26 +601,32 @@ class EnvoiSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """
-        Règle métier: ré-envoi uniquement après X jours (par offre)
-        (même CV -> même OFFRE).
+        Règle métier: ré-envoi uniquement après X jours (par candidat/offre)
+        (même CANDIDAT -> même OFFRE), peu importe le CV utilisé.
         """
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return data
 
-        cv = data.get("cv")
         offre = data.get("offre")
-        if not cv or not offre:
+        if not offre:
             return data
 
         delay_days = getattr(offre, "relance_days", 7) or 7
 
-        last = Envoi.objects.filter(cv=cv, offre=offre).order_by("-dateEnvoi").first()
+        # ✅ Filtre par candidat (cv__user) au lieu de cv
+        last = (
+            Envoi.objects
+            .filter(cv__user=request.user, offre=offre)
+            .order_by("-dateEnvoi")
+            .first()
+        )
+
         if last:
             allowed_at = last.dateEnvoi + timedelta(days=delay_days)
             if timezone.now() < allowed_at:
                 raise serializers.ValidationError(
-                    f"Vous avez déjà envoyé ce CV à cette offre. "
+                    f"Vous avez déjà postulé à cette offre. "
                     f"Ré-envoi possible à partir du {allowed_at.strftime('%Y-%m-%d %H:%M')}."
                 )
 
