@@ -1,27 +1,41 @@
 # main/services/email_service.py
 import threading
-from django.core.mail import send_mail
+import requests
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
 from django.utils.html import strip_tags
 
 
-def _send_email_async(subject, plain_message, from_email, recipient_list, html_message):
+def _send_brevo_email(subject, html_message, from_email, recipient_email, plain_message):
     try:
-        print(f"[EmailService] Sending email to {recipient_list} from {from_email}")
-        send_mail(
-            subject,
-            plain_message,
-            from_email,
-            recipient_list,
-            fail_silently=False,
-            html_message=html_message,
+        print(f"[EmailService] Sending email to {recipient_email} via Brevo API")
+        api_key = getattr(settings, 'BREVO_API_KEY', '')
+
+        response = requests.post(
+            'https://api.brevo.com/v3/smtp/email',
+            headers={
+                'api-key': api_key,
+                'Content-Type': 'application/json',
+            },
+            json={
+                'sender': {'name': 'AutoCandidature', 'email': from_email},
+                'to': [{'email': recipient_email}],
+                'subject': subject,
+                'htmlContent': html_message,
+                'textContent': plain_message,
+            },
+            timeout=15,
         )
-        print(f"[EmailService] Email sent successfully to {recipient_list}")
+
+        if response.status_code == 201:
+            print(f"[EmailService] Email sent successfully to {recipient_email}")
+        else:
+            print(f"[EmailService] Brevo error: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"[EmailService] Failed to send email: {type(e).__name__}: {e}")
+
 
 class EmailService:
     @staticmethod
@@ -77,8 +91,8 @@ class EmailService:
         from_email = getattr(settings, 'EMAIL_HOST_USER', 'noreply@autocandidature.com')
 
         t = threading.Thread(
-            target=_send_email_async,
-            args=(subject, plain_message, from_email, [user.email], html_message)
+            target=_send_brevo_email,
+            args=(subject, html_message, from_email, user.email, plain_message)
         )
         t.daemon = True
         t.start()
@@ -138,8 +152,8 @@ class EmailService:
         from_email = getattr(settings, 'EMAIL_HOST_USER', 'noreply@autocandidature.com')
 
         t = threading.Thread(
-            target=_send_email_async,
-            args=(subject, plain_message, from_email, [user.email], html_message)
+            target=_send_brevo_email,
+            args=(subject, html_message, from_email, user.email, plain_message)
         )
         t.daemon = True
         t.start()
