@@ -10,17 +10,18 @@ from django.utils.html import strip_tags
 
 def _send_email_async(subject, plain_message, from_email, recipient_list, html_message):
     try:
+        print(f"[EmailService] Sending email to {recipient_list} from {from_email}")
         send_mail(
             subject,
             plain_message,
             from_email,
             recipient_list,
-            fail_silently=True,
+            fail_silently=False,
             html_message=html_message,
         )
+        print(f"[EmailService] Email sent successfully to {recipient_list}")
     except Exception as e:
-        print(f"[EmailService] Failed to send email: {e}")
-
+        print(f"[EmailService] Failed to send email: {type(e).__name__}: {e}")
 
 class EmailService:
     @staticmethod
