@@ -157,3 +157,4 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'yaci.gaham@gmail.com')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'tpmvxyarzgrexone')
 
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5174')
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
