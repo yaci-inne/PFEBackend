@@ -2,7 +2,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -52,7 +52,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 # Utilisateur APIView
 # ==========================
 class UtilisateurListCreate(APIView):
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_permissions(self):
         if self.request.method == "GET":
@@ -61,7 +61,7 @@ class UtilisateurListCreate(APIView):
 
     def get(self, request):
         utilisateurs = Utilisateur.objects.all().order_by("-dateInscription")
-        serializer = UtilisateurReadSerializer(utilisateurs, many=True)
+        serializer = UtilisateurReadSerializer(utilisateurs, many=True, context={"request": request})
         return Response({"count": utilisateurs.count(), "utilisateurs": serializer.data}, status=status.HTTP_200_OK)
 
     def post(self, request):
@@ -70,7 +70,10 @@ class UtilisateurListCreate(APIView):
             try:
                 user = serializer.save()
                 return Response(
-                    {"message": "Inscription réussie", "user": UtilisateurReadSerializer(user).data},
+                    {
+                        "message": "Inscription réussie",
+                        "user": UtilisateurReadSerializer(user, context={"request": request}).data,
+                    },
                     status=status.HTTP_201_CREATED,
                 )
             except IntegrityError:
@@ -81,7 +84,7 @@ class UtilisateurListCreate(APIView):
             except Exception as e:
                 return Response(
                     {"error": "Erreur création", "details": str(e)},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
         return Response({"error": "Données invalides", "details": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
@@ -89,7 +92,7 @@ class UtilisateurListCreate(APIView):
 
 class UtilisateurDetail(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_object(self, pk, request):
         user = get_object_or_404(Utilisateur, pk=pk)
@@ -99,7 +102,10 @@ class UtilisateurDetail(APIView):
 
     def get(self, request, pk):
         user = self.get_object(pk, request)
-        return Response(UtilisateurReadSerializer(user).data, status=status.HTTP_200_OK)
+        return Response(
+            UtilisateurReadSerializer(user, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
     def put(self, request, pk):
         user = self.get_object(pk, request)
@@ -107,18 +113,46 @@ class UtilisateurDetail(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response(
-                {"message": "Profil mis à jour", "user": UtilisateurReadSerializer(user).data},
+                {
+                    "message": "Profil mis à jour",
+                    "user": UtilisateurReadSerializer(user, context={"request": request}).data,
+                },
                 status=status.HTTP_200_OK,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def patch(self, request, pk):
         user = self.get_object(pk, request)
+
+        # ── Gestion suppression photo ──────────────────────────
+        # Le frontend envoie photoProfil="" pour demander la suppression
+        raw_photo = request.data.get("photoProfil", None)
+        if raw_photo == "" or raw_photo == "null":
+            if user.photoProfil:
+                user.photoProfil.delete(save=False)   # supprime le fichier du disque
+                user.photoProfil = None
+                user.save(update_fields=["photoProfil"])
+            # On renvoie directement le profil mis à jour sans passer par le serializer
+            # (évite de revalider un champ photo vide)
+            return Response(
+                {
+                    "message": "Photo supprimée avec succès.",
+                    "user": UtilisateurReadSerializer(user, context={"request": request}).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # ── Mise à jour normale (champs texte + éventuelle nouvelle photo) ──
         serializer = UtilisateurSerializer(user, data=request.data, partial=True, context={"request": request})
         if serializer.is_valid():
             serializer.save()
+            # Recharge depuis la BDD pour avoir photo_url à jour
+            user.refresh_from_db()
             return Response(
-                {"message": "Profil mis à jour", "user": UtilisateurReadSerializer(user).data},
+                {
+                    "message": "Profil mis à jour",
+                    "user": UtilisateurReadSerializer(user, context={"request": request}).data,
+                },
                 status=status.HTTP_200_OK,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -152,14 +186,12 @@ class EntrepriseListCreate(APIView):
 
         try:
             entreprise = Entreprise.objects.get(user=request.user)
-            serializer = EntrepriseSerializer(
-                entreprise, data=request.data, partial=True, context={"request": request}
-            )
+            serializer = EntrepriseSerializer(entreprise, data=request.data, partial=True, context={"request": request})
             if serializer.is_valid():
                 serializer.save()
                 return Response(
                     {"message": "Profil entreprise mis à jour", "entreprise": serializer.data},
-                    status=status.HTTP_200_OK
+                    status=status.HTTP_200_OK,
                 )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -169,7 +201,7 @@ class EntrepriseListCreate(APIView):
                 entreprise = serializer.save(user=request.user)
                 return Response(
                     {"message": "Profil entreprise créé", "entreprise": serializer.data},
-                    status=status.HTTP_201_CREATED
+                    status=status.HTTP_201_CREATED,
                 )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -188,35 +220,26 @@ class EntrepriseDetail(APIView):
         entreprise = self.get_object(pk)
         if entreprise.user != request.user:
             raise PermissionDenied("Vous ne pouvez modifier que votre propre entreprise")
-
         serializer = EntrepriseSerializer(entreprise, data=request.data, partial=False, context={"request": request})
         if serializer.is_valid():
             serializer.save()
-            return Response(
-                {"message": "Entreprise mise à jour", "entreprise": serializer.data},
-                status=status.HTTP_200_OK
-            )
+            return Response({"message": "Entreprise mise à jour", "entreprise": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def patch(self, request, pk):
         entreprise = self.get_object(pk)
         if entreprise.user != request.user:
             raise PermissionDenied("Vous ne pouvez modifier que votre propre entreprise")
-
         serializer = EntrepriseSerializer(entreprise, data=request.data, partial=True, context={"request": request})
         if serializer.is_valid():
             serializer.save()
-            return Response(
-                {"message": "Entreprise mise à jour", "entreprise": serializer.data},
-                status=status.HTTP_200_OK
-            )
+            return Response({"message": "Entreprise mise à jour", "entreprise": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
         entreprise = self.get_object(pk)
         if entreprise.user != request.user:
             raise PermissionDenied("Vous ne pouvez désactiver que votre propre entreprise")
-
         entreprise.recevoirCandidatures = False
         entreprise.save()
         return Response({"message": "Entreprise désactivée (ne reçoit plus)"}, status=status.HTTP_200_OK)
@@ -233,7 +256,7 @@ class CVListCreate(APIView):
         cvs = CV.objects.filter(user=request.user, estSupprime=False).order_by("-dateCreation")
         return Response(
             {"count": cvs.count(), "cvs": CVListSerializer(cvs, many=True).data},
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
     def post(self, request):
@@ -242,7 +265,7 @@ class CVListCreate(APIView):
             cv = serializer.save()
             return Response(
                 {"message": "CV créé", "cv": CVSerializer(cv, context={"request": request}).data},
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -277,7 +300,6 @@ class CVDetail(APIView):
     def delete(self, request, pk):
         cv = self.get_object(pk, request)
         cv_nom = cv.nom
-        # Soft delete to preserve candidature history and related statistics.
         cv.estSupprime = True
         cv.save(update_fields=["estSupprime"])
         return Response({"message": f'CV "{cv_nom}" supprimé'}, status=status.HTTP_200_OK)
@@ -287,15 +309,10 @@ class CVDetail(APIView):
 # OFFRES APIViews
 # ==========================
 class OffreList(APIView):
-    """
-    GET: Offres visibles pour candidats ( recevoirCandidatures=True + pas archivée)
-    + filtres query params
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         qs = Offre.objects.filter(
-          
             recevoirCandidatures=True,
             estArchivee=False,
             entreprise__recevoirCandidatures=True,
@@ -337,10 +354,6 @@ class OffreList(APIView):
 
 
 class OffreEntrepriseListCreate(APIView):
-    """
-    GET: mes offres (entreprise)
-    POST: créer une offre (entreprise)
-    """
     permission_classes = [permissions.IsAuthenticated, IsEntreprise]
 
     def get(self, request):
@@ -351,20 +364,15 @@ class OffreEntrepriseListCreate(APIView):
     def post(self, request):
         serializer = OffreSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
-            offre = serializer.save()  # entreprise forcée dans serializer
+            offre = serializer.save()
             return Response(
                 {"message": "Offre créée", "offre": OffreSerializer(offre, context={"request": request}).data},
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class OffreDetail(APIView):
-    """
-    GET: détails offre
-    PATCH/PUT: modifier (propriétaire entreprise)
-    DELETE: archive (pro)
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self, pk):
@@ -378,7 +386,6 @@ class OffreDetail(APIView):
 
     def _is_visible_to_candidates(self, offre):
         return (
-            
             offre.recevoirCandidatures
             and not offre.estArchivee
             and offre.entreprise.recevoirCandidatures
@@ -386,22 +393,16 @@ class OffreDetail(APIView):
 
     def get(self, request, pk):
         offre = self.get_object(pk)
-
-        # owner entreprise: OK
         if request.user.type == "entreprise" and hasattr(request.user, "entreprise"):
             if offre.entreprise == request.user.entreprise:
                 return Response(OffreSerializer(offre, context={"request": request}).data, status=status.HTTP_200_OK)
-
-        # sinon: uniquement si visible
         if not self._is_visible_to_candidates(offre):
             raise PermissionDenied("Offre non accessible.")
-
         return Response(OffreSerializer(offre, context={"request": request}).data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk):
         offre = self.get_object(pk)
         self._must_own(request, offre)
-
         serializer = OffreSerializer(offre, data=request.data, partial=True, context={"request": request})
         if serializer.is_valid():
             serializer.save()
@@ -411,7 +412,6 @@ class OffreDetail(APIView):
     def put(self, request, pk):
         offre = self.get_object(pk)
         self._must_own(request, offre)
-
         serializer = OffreSerializer(offre, data=request.data, partial=False, context={"request": request})
         if serializer.is_valid():
             serializer.save()
@@ -421,18 +421,13 @@ class OffreDetail(APIView):
     def delete(self, request, pk):
         offre = self.get_object(pk)
         self._must_own(request, offre)
-
         offre.estArchivee = True
         offre.recevoirCandidatures = False
         offre.save()
-
         return Response({"message": "Offre archivée"}, status=status.HTTP_200_OK)
 
 
 class OffreToggleRecevoir(APIView):
-    """
-    PATCH: set recevoirCandidatures (bouton) pour une offre (entreprise propriétaire)
-    """
     permission_classes = [permissions.IsAuthenticated, IsEntreprise]
 
     def _parse_bool(self, value):
@@ -444,9 +439,8 @@ class OffreToggleRecevoir(APIView):
                 return True
             if v in ["false", "0", "no", "off"]:
                 return False
-        if isinstance(value, int):
-            if value in (0, 1):
-                return bool(value)
+        if isinstance(value, int) and value in (0, 1):
+            return bool(value)
         raise ValidationError({"recevoirCandidatures": "Valeur invalide (true/false)."})
 
     def patch(self, request, pk):
@@ -458,8 +452,7 @@ class OffreToggleRecevoir(APIView):
         if value is None:
             raise ValidationError({"recevoirCandidatures": "Ce champ est requis (true/false)."})
 
-        parsed = self._parse_bool(value)
-        offre.recevoirCandidatures = parsed
+        offre.recevoirCandidatures = self._parse_bool(value)
         offre.save()
 
         return Response(
@@ -468,7 +461,7 @@ class OffreToggleRecevoir(APIView):
                 "offreId": offre.offreId,
                 "recevoirCandidatures": offre.recevoirCandidatures,
             },
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
 
@@ -511,7 +504,6 @@ class EnvoiListCreate(APIView):
         if not isinstance(offre_ids, list) or len(offre_ids) == 0:
             return Response({"error": "Aucune offre sélectionnée"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # nettoyage IDs int + unique
         cleaned_ids = []
         for x in offre_ids:
             try:
@@ -558,10 +550,8 @@ class EnvoiListCreate(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # offres valides : publiées + recevoir ON + non archivée + entreprise autorise globalement
         offres = Offre.objects.filter(
             offreId__in=cleaned_ids,
-          
             recevoirCandidatures=True,
             estArchivee=False,
             entreprise__recevoirCandidatures=True,
@@ -577,7 +567,7 @@ class EnvoiListCreate(APIView):
                     "envois_ids": [],
                     "refusees": None,
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
 
         created_ids = []
@@ -632,7 +622,7 @@ class EnvoiListCreate(APIView):
                     "refusees": refused if refused else None,
                     "details": {"cv": cv.nom, "offres_total": offres.count()},
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
 
         return Response(
@@ -645,7 +635,7 @@ class EnvoiListCreate(APIView):
                 "refusees": refused if refused else None,
                 "details": {"cv": cv.nom, "offres_total": offres.count()},
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -658,13 +648,11 @@ class EnvoiDetail(APIView):
         if request.user.type == "candidat":
             if envoi.cv.user != request.user:
                 raise PermissionDenied("Vous ne pouvez voir que vos propres candidatures")
-
         elif request.user.type == "entreprise":
             if not hasattr(request.user, "entreprise"):
                 raise PermissionDenied("Profil entreprise non trouvé")
             if envoi.offre.entreprise != request.user.entreprise:
                 raise PermissionDenied("Vous ne pouvez voir que les candidatures de vos offres")
-
         elif not request.user.is_staff:
             raise PermissionDenied("Permission refusée")
 
@@ -691,9 +679,8 @@ class EnvoiDetail(APIView):
                     "message": f"Statut mis à jour: {envoi.get_statut_display()}",
                     "envoi": EnvoiSerializer(envoi, context={"request": request}).data,
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
-
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
@@ -703,8 +690,9 @@ class EnvoiDetail(APIView):
         return Response({"message": f"Candidature supprimée: {envoi_info}"}, status=status.HTTP_200_OK)
 
 
-
-
+# ==========================
+# Entretien Créneau APIViews
+# ==========================
 class EntretienCreneauListCreate(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -713,7 +701,6 @@ class EntretienCreneauListCreate(APIView):
             Envoi.objects.select_related("cv__user", "offre__entreprise"),
             pk=envoi_id,
         )
-
         if request.user.type == "entreprise":
             if envoi.offre.entreprise != request.user.entreprise:
                 raise PermissionDenied("Acces refuse.")
@@ -722,7 +709,6 @@ class EntretienCreneauListCreate(APIView):
                 raise PermissionDenied("Acces refuse.")
         elif not request.user.is_staff:
             raise PermissionDenied("Acces refuse.")
-
         return envoi
 
     def get(self, request, envoi_id):
@@ -745,18 +731,12 @@ class EntretienCreneauListCreate(APIView):
 
         payload = request.data
         is_batch = isinstance(payload, list)
-        serializer = EntretienCreneauCreateSerializer(
-            data=payload,
-            many=is_batch,
-            context={"request": request},
-        )
+        serializer = EntretienCreneauCreateSerializer(data=payload, many=is_batch, context={"request": request})
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         if is_batch:
-            created = []
-            for item in serializer.validated_data:
-                created.append(EntretienCreneau.objects.create(envoi=envoi, **item))
+            created = [EntretienCreneau.objects.create(envoi=envoi, **item) for item in serializer.validated_data]
             output = EntretienCreneauReadSerializer(created, many=True, context={"request": request}).data
             return Response(
                 {"message": f"{len(created)} creneaux proposes avec succes.", "creneaux": output},
@@ -765,10 +745,7 @@ class EntretienCreneauListCreate(APIView):
 
         creneau = serializer.save(envoi=envoi)
         output = EntretienCreneauReadSerializer(creneau, context={"request": request}).data
-        return Response(
-            {"message": "Creneau propose avec succes.", "creneau": output},
-            status=status.HTTP_201_CREATED,
-        )
+        return Response({"message": "Creneau propose avec succes.", "creneau": output}, status=status.HTTP_201_CREATED)
 
 
 class EntretienCreneauReserve(APIView):
@@ -804,10 +781,7 @@ class EntretienCreneauReserve(APIView):
         creneau.save(update_fields=["estReserve", "reservePar", "dateReservation"])
 
         serializer = EntretienCreneauReadSerializer(creneau, context={"request": request})
-        return Response(
-            {"message": "Creneau reserve avec succes.", "creneau": serializer.data},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"message": "Creneau reserve avec succes.", "creneau": serializer.data}, status=status.HTTP_200_OK)
 
 
 class EntretienMeetingInfo(APIView):
@@ -833,7 +807,6 @@ class EntretienMeetingInfo(APIView):
 
         room_name = f"pfe-entretien-{creneau.creneauId}"
         meeting_url = f"https://meet.jit.si/{room_name}"
-
         now = timezone.now()
         can_join = (creneau.startAt - timedelta(minutes=10)) <= now <= (creneau.endAt + timedelta(minutes=30))
 
@@ -850,6 +823,8 @@ class EntretienMeetingInfo(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
 # ==========================
 # Dashboard Stats
 # ==========================
@@ -861,9 +836,7 @@ class DashboardStats(APIView):
 
         if user.type == "candidat":
             cvs = CV.objects.filter(user=user, estSupprime=False)
-            # Keep historical stats even when some CVs are deleted.
             envois = Envoi.objects.filter(cv__user=user)
-
             stats = {
                 "total_cvs": cvs.count(),
                 "total_envois": envois.count(),
@@ -879,9 +852,7 @@ class DashboardStats(APIView):
         elif user.type == "entreprise":
             if not hasattr(user, "entreprise"):
                 return Response({"error": "Profil entreprise non trouvé"}, status=status.HTTP_404_NOT_FOUND)
-
             envois = Envoi.objects.filter(offre__entreprise=user.entreprise)
-
             stats = {
                 "total_offres": Offre.objects.filter(entreprise=user.entreprise).count(),
                 "total_candidatures": envois.count(),
@@ -913,7 +884,6 @@ class DashboardStats(APIView):
         return round((reponses / total) * 100, 2)
 
 
-
 class EntretienCreneauAnnuler(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -923,7 +893,6 @@ class EntretienCreneauAnnuler(APIView):
             pk=creneau_id,
         )
 
-        # Vérification accès : candidat propriétaire OU entreprise propriétaire de l'offre
         if request.user.type == "candidat":
             if creneau.envoi.cv.user != request.user:
                 raise PermissionDenied("Acces refuse.")
@@ -934,15 +903,9 @@ class EntretienCreneauAnnuler(APIView):
             raise PermissionDenied("Acces refuse.")
 
         if not creneau.estReserve:
-            return Response(
-                {"error": "Ce creneau n'est pas reserve."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": "Ce creneau n'est pas reserve."}, status=status.HTTP_400_BAD_REQUEST)
         if creneau.startAt <= timezone.now():
-            return Response(
-                {"error": "Impossible d'annuler un creneau deja passe."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": "Impossible d'annuler un creneau deja passe."}, status=status.HTTP_400_BAD_REQUEST)
 
         creneau.estReserve = False
         creneau.reservePar = None

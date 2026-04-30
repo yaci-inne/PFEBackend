@@ -16,6 +16,7 @@ from .models import (
     Offre,
     Competence,
     Langue,
+    EntretienCreneau,
 )
 from .services.cv_ai_analyzer import analyze_cv_file
 
@@ -24,8 +25,8 @@ from .services.cv_ai_analyzer import analyze_cv_file
 # Utilisateur (create/update)
 # ========================
 class UtilisateurSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=True, style={"input_type": "password"})
-    password_confirm = serializers.CharField(write_only=True, required=True, style={"input_type": "password"})
+    password = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
+    password_confirm = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
     photo_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -39,27 +40,24 @@ class UtilisateurSerializer(serializers.ModelSerializer):
             "prenom",
             "telephone",
             "dateNaissance",
-            "photoProfil",
-            "photo_url",
+            "photoProfil",   # champ ImageField du modèle (upload)
+            "photo_url",     # URL absolue en lecture
             "dateInscription",
             "password",
             "password_confirm",
         ]
-        read_only_fields = ["id", "dateInscription"]
+        read_only_fields = ["id", "dateInscription", "photo_url"]
         extra_kwargs = {
-            "email": {"required": True},
-            "username": {"required": True},
-            "type": {"required": True},
+            "photoProfil": {"required": False, "allow_null": True},
         }
 
+    # ── Validation email unique ────────────────────────────────
     def validate_email(self, value):
         if not value:
             raise serializers.ValidationError("L'email est obligatoire.")
-
         qs = Utilisateur.objects.filter(email=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
-
         if qs.exists():
             raise serializers.ValidationError("Cet email est déjà utilisé.")
         return value
@@ -78,10 +76,13 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
-        # Création uniquement : check password + confirmation + validation Django
+        # Création uniquement : password obligatoire + confirmation
         if not self.instance:
             password = data.get("password")
             password_confirm = data.get("password_confirm")
+
+            if not password:
+                raise serializers.ValidationError({"password": "Le mot de passe est obligatoire."})
 
             if password != password_confirm:
                 raise serializers.ValidationError({"password_confirm": "Les mots de passe ne correspondent pas."})
@@ -93,25 +94,40 @@ class UtilisateurSerializer(serializers.ModelSerializer):
 
         return data
 
-    # In your UtilisateurSerializer class, modify the create method:
+    def get_photo_url(self, obj):
+        request = self.context.get("request")
+        if obj.photoProfil:
+            try:
+                url = obj.photoProfil.url
+                return request.build_absolute_uri(url) if request else url
+            except Exception:
+                return None
+        return None
+
     def create(self, validated_data):
         validated_data.pop("password_confirm", None)
         password = validated_data.pop("password")
-        
+
         user = Utilisateur(**validated_data)
         user.set_password(password)
-        user.is_active = False  # Set to False - requires email verification
+        user.is_active = False  # Requiert vérification email
         user.save()
-        
-        # Import here to avoid circular import
+
         from .services.email_service import EmailService
         EmailService.send_verification_email(user)
-        
+
         return user
 
     def update(self, instance, validated_data):
         validated_data.pop("password_confirm", None)
         password = validated_data.pop("password", None)
+
+        # Si photoProfil est None explicitement → suppression
+        if "photoProfil" in validated_data and validated_data["photoProfil"] is None:
+            if instance.photoProfil:
+                instance.photoProfil.delete(save=False)
+            instance.photoProfil = None
+            validated_data.pop("photoProfil")
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -125,14 +141,6 @@ class UtilisateurSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
-
-    def get_photo_url(self, obj):
-        request = self.context.get("request")
-        if obj.photoProfil:
-            if request:
-                return request.build_absolute_uri(obj.photoProfil.url)
-            return obj.photoProfil.url
-        return None
 
 
 class UtilisateurReadSerializer(serializers.ModelSerializer):
@@ -149,7 +157,6 @@ class UtilisateurReadSerializer(serializers.ModelSerializer):
             "prenom",
             "telephone",
             "dateNaissance",
-            "photoProfil",
             "photo_url",
             "dateInscription",
         ]
@@ -158,9 +165,11 @@ class UtilisateurReadSerializer(serializers.ModelSerializer):
     def get_photo_url(self, obj):
         request = self.context.get("request")
         if obj.photoProfil:
-            if request:
-                return request.build_absolute_uri(obj.photoProfil.url)
-            return obj.photoProfil.url
+            try:
+                url = obj.photoProfil.url
+                return request.build_absolute_uri(url) if request else url
+            except Exception:
+                return None
         return None
 
 
@@ -196,11 +205,6 @@ class EntrepriseSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
-        """
-        En pratique, comme tu crées Entreprise via signal post_save, ton endpoint
-        devrait surtout faire du UPDATE / GET.
-        Ici on empêche la création par un user non-entreprise.
-        """
         request = self.context.get("request")
         if not self.instance and request and request.user.is_authenticated:
             if request.user.type != "entreprise":
@@ -269,8 +273,7 @@ class CVSerializer(serializers.ModelSerializer):
     def validate_fichier(self, value):
         if not value:
             return value
-
-        max_size = 10 * 1024 * 1024  # 10MB
+        max_size = 10 * 1024 * 1024
         if value.size > max_size:
             raise serializers.ValidationError("La taille du fichier ne doit pas dépasser 10 MB.")
         return value
@@ -366,7 +369,6 @@ class OffreSerializer(serializers.ModelSerializer):
     competences = CompetenceSerializer(many=True, read_only=True)
     langues = LangueSerializer(many=True, read_only=True)
 
-    # écriture via IDs
     competences_ids = serializers.PrimaryKeyRelatedField(
         queryset=Competence.objects.all(),
         many=True,
@@ -411,7 +413,6 @@ class OffreSerializer(serializers.ModelSerializer):
             "pays",
             "relance_days",
             "recevoirCandidatures",
-            
             "estArchivee",
             "dateLimite",
             "dateCreation",
@@ -424,21 +425,16 @@ class OffreSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         request = self.context.get("request")
-
-        # création: seulement entreprise
         if not self.instance and request:
             if not request.user.is_authenticated or request.user.type != "entreprise":
                 raise serializers.ValidationError("Seules les entreprises peuvent créer une offre.")
-            # force l'entreprise depuis le user connecté
             data["entreprise"] = request.user.entreprise
 
-        # cohérence salaire
         salaire_min = data.get("salaire_min")
         salaire_max = data.get("salaire_max")
         if salaire_min is not None and salaire_max is not None and salaire_min > salaire_max:
             raise serializers.ValidationError({"salaire_min": "Le salaire min ne peut pas dépasser le salaire max."})
 
-        # cohérence expérience
         exp_min = data.get("experience_min")
         exp_max = data.get("experience_max")
         if exp_min is not None and exp_max is not None and exp_min > exp_max:
@@ -449,7 +445,6 @@ class OffreSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         competences = validated_data.pop("competences", [])
         langues = validated_data.pop("langues", [])
-
         offre = Offre.objects.create(**validated_data)
         if competences:
             offre.competences.set(competences)
@@ -460,21 +455,17 @@ class OffreSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         competences = validated_data.pop("competences", None)
         langues = validated_data.pop("langues", None)
-
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-
         if competences is not None:
             instance.competences.set(competences)
         if langues is not None:
             instance.langues.set(langues)
-
         return instance
 
 
 class OffreListSerializer(serializers.ModelSerializer):
-    """Version légère pour listes."""
     entreprise_nom = serializers.CharField(source="entreprise.nomEntreprise", read_only=True)
     entreprise_id = serializers.IntegerField(source="entreprise.entrepriseId", read_only=True)
 
@@ -497,7 +488,6 @@ class OffreListSerializer(serializers.ModelSerializer):
             "ville",
             "pays",
             "recevoirCandidatures",
-            
             "estArchivee",
             "entreprise_id",
             "entreprise_nom",
@@ -518,27 +508,17 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 # ========================
 # Envoi (CV -> Offre)
 # ========================
-from datetime import timedelta
-from django.utils import timezone
-from rest_framework import serializers
-
-from .models import CV, Offre, Envoi, EntretienCreneau
-
-
 class EnvoiSerializer(serializers.ModelSerializer):
-    # --- Lecture: infos CV
     cv_nom = serializers.CharField(source="cv.nom", read_only=True)
     cv_type = serializers.CharField(source="cv.type", read_only=True)
     cv_fichier_url = serializers.SerializerMethodField()
 
-    # --- Lecture: infos candidat
     candidat_id = serializers.IntegerField(source="cv.user.id", read_only=True)
     candidat_nom = serializers.CharField(source="cv.user.nom", read_only=True)
     candidat_prenom = serializers.CharField(source="cv.user.prenom", read_only=True)
     candidat_email = serializers.EmailField(source="cv.user.email", read_only=True)
     candidat_telephone = serializers.CharField(source="cv.user.telephone", read_only=True)
 
-    # --- Lecture: infos offre
     offre_titre = serializers.CharField(source="offre.titre", read_only=True)
     offre_poste = serializers.CharField(source="offre.poste", read_only=True)
     offre_domaine = serializers.CharField(source="offre.domaine", read_only=True)
@@ -548,11 +528,9 @@ class EnvoiSerializer(serializers.ModelSerializer):
     offre_type_contrat = serializers.CharField(source="offre.type_contrat", read_only=True)
     offre_mode_travail = serializers.CharField(source="offre.mode_travail", read_only=True)
 
-    # --- Lecture: infos entreprise via offre
     entreprise_nom = serializers.CharField(source="offre.entreprise.nomEntreprise", read_only=True)
     entreprise_id = serializers.IntegerField(source="offre.entreprise.entrepriseId", read_only=True)
 
-    # --- Ecriture
     cv = serializers.PrimaryKeyRelatedField(queryset=CV.objects.all(), write_only=True)
     offre = serializers.PrimaryKeyRelatedField(queryset=Offre.objects.all(), write_only=True)
 
@@ -588,22 +566,13 @@ class EnvoiSerializer(serializers.ModelSerializer):
     def validate_offre(self, value):
         if not value.recevoirCandidatures:
             raise serializers.ValidationError("Cette offre ne reçoit pas de candidatures (bouton désactivé).")
-
         if not value.entreprise.recevoirCandidatures:
             raise serializers.ValidationError("L'entreprise de cette offre n'accepte pas de candidatures.")
-
         if bool(getattr(value, "estArchivee", False)):
             raise serializers.ValidationError("Cette offre est archivée.")
-
-        
-
         return value
 
     def validate(self, data):
-        """
-        Règle métier: ré-envoi uniquement après X jours (par candidat/offre)
-        (même CANDIDAT -> même OFFRE), peu importe le CV utilisé.
-        """
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return data
@@ -614,7 +583,6 @@ class EnvoiSerializer(serializers.ModelSerializer):
 
         delay_days = getattr(offre, "relance_days", 7) or 7
 
-        # ✅ Filtre par candidat (cv__user) au lieu de cv
         last = (
             Envoi.objects
             .filter(cv__user=request.user, offre=offre)
@@ -692,6 +660,9 @@ class EnvoiListSerializer(serializers.ModelSerializer):
         return EntretienCreneauReadSerializer(creneaux, many=True, context={"request": request}).data
 
 
+# ========================
+# Entretien Créneau
+# ========================
 class EntretienCreneauCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = EntretienCreneau
@@ -705,7 +676,6 @@ class EntretienCreneauCreateSerializer(serializers.ModelSerializer):
         start_at = data.get("startAt")
         end_at = data.get("endAt")
         if start_at and not end_at:
-            # If end time is omitted, default interview duration is 60 minutes.
             data["endAt"] = start_at + timedelta(minutes=60)
             end_at = data["endAt"]
         if start_at and end_at and end_at <= start_at:

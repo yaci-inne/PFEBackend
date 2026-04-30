@@ -29,6 +29,11 @@ class UtilisateurManager(BaseUserManager):
 # =========================
 # Utilisateur
 # =========================
+def user_photo_upload_path(instance, filename):
+    """Stocke dans : media/photos/utilisateurs/<user_id>/<filename>"""
+    return f"photos/utilisateurs/{instance.pk}/{filename}"
+
+
 class Utilisateur(AbstractBaseUser, PermissionsMixin):
     TYPE_CHOICES = [
         ("invite", "Invité"),
@@ -38,8 +43,6 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
 
     id = models.AutoField(primary_key=True)
     username = models.CharField(max_length=100, unique=True)
-
-    # si tu veux garder obligatoire: enlève null/blank
     email = models.EmailField(unique=True)
 
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="invite")
@@ -48,7 +51,14 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     prenom = models.CharField(max_length=100, null=True, blank=True)
     telephone = models.CharField(max_length=20, null=True, blank=True)
     dateNaissance = models.DateField(null=True, blank=True)
-    photoProfil = models.ImageField(upload_to="photos_profil/", null=True, blank=True)
+
+    # ── Photo de profil ───────────────────────────────────────
+    # Renommé pour utiliser le chemin dynamique par user_id
+    photoProfil = models.ImageField(
+        upload_to=user_photo_upload_path,
+        null=True,
+        blank=True,
+    )
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -62,6 +72,16 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.username
 
+    @property
+    def photo_url(self):
+        """Retourne l'URL relative de la photo ou une chaîne vide."""
+        if self.photoProfil:
+            try:
+                return self.photoProfil.url
+            except Exception:
+                return ""
+        return ""
+
 
 # =========================
 # Entreprise
@@ -73,7 +93,6 @@ class Entreprise(models.Model):
     nomEntreprise = models.CharField(max_length=150)
     secteur = models.CharField(max_length=120, null=True, blank=True)
 
-    # optionnel : laisse null/blank pour éviter "N/A"
     ville = models.CharField(max_length=100, null=True, blank=True)
     pays = models.CharField(max_length=100, default="Algérie")
 
@@ -182,20 +201,17 @@ class Offre(models.Model):
     offreId = models.AutoField(primary_key=True)
     entreprise = models.ForeignKey(Entreprise, on_delete=models.CASCADE, related_name="offres")
 
-    # affichage
     titre = models.CharField(max_length=150)
     poste = models.CharField(max_length=150, null=True, blank=True)
 
-    # ciblage principal
     domaine = models.CharField(max_length=120)
     specialite = models.CharField(max_length=120, null=True, blank=True)
 
-    # ciblage avancé
     niveau = models.CharField(max_length=30, choices=NIVEAU_CHOICES, null=True, blank=True)
     type_contrat = models.CharField(max_length=20, choices=TYPE_CONTRAT_CHOICES)
     mode_travail = models.CharField(max_length=20, choices=MODE_TRAVAIL_CHOICES)
 
-    experience_min = models.PositiveIntegerField(null=True, blank=True)  # en années
+    experience_min = models.PositiveIntegerField(null=True, blank=True)
     experience_max = models.PositiveIntegerField(null=True, blank=True)
 
     etude_min = models.CharField(max_length=20, choices=ETUDE_CHOICES, default="aucun")
@@ -203,27 +219,22 @@ class Offre(models.Model):
     salaire_max = models.PositiveIntegerField(null=True, blank=True)
     devise = models.CharField(max_length=10, default="DZD")
 
-    # descriptions utiles à la recherche
     description = models.TextField(null=True, blank=True)
     missions = models.TextField(null=True, blank=True)
     profil_recherche = models.TextField(null=True, blank=True)
     avantages = models.TextField(null=True, blank=True)
 
-    tags = models.CharField(max_length=255, null=True, blank=True)  # ex: "django,react,api,rest"
+    tags = models.CharField(max_length=255, null=True, blank=True)
 
     competences = models.ManyToManyField(Competence, blank=True)
     langues = models.ManyToManyField(Langue, blank=True)
 
-    # localisation
     ville = models.CharField(max_length=100, null=True, blank=True)
     pays = models.CharField(max_length=100, default="Algérie")
 
-    # règle métier: délai de relance spécifique à l’offre
     relance_days = models.PositiveIntegerField(default=7)
 
-    # logique bouton / publication
-    recevoirCandidatures = models.BooleanField(default=False)  # bouton OFF par défaut
-   
+    recevoirCandidatures = models.BooleanField(default=False)
     estArchivee = models.BooleanField(default=False)
 
     dateLimite = models.DateField(null=True, blank=True)
@@ -238,7 +249,7 @@ class Offre(models.Model):
             models.Index(fields=["type_contrat"]),
             models.Index(fields=["mode_travail"]),
             models.Index(fields=["niveau"]),
-            models.Index(fields=[ "recevoirCandidatures", "estArchivee"]),
+            models.Index(fields=["recevoirCandidatures", "estArchivee"]),
         ]
 
     def __str__(self):
@@ -260,7 +271,6 @@ class Envoi(models.Model):
     cv = models.ForeignKey(CV, on_delete=models.CASCADE, related_name="envois")
     offre = models.ForeignKey(Offre, on_delete=models.CASCADE, related_name="envois")
 
-    # snapshot utile (historique)
     entreprise_nom_snapshot = models.CharField(max_length=150, null=True, blank=True)
     offre_titre_snapshot = models.CharField(max_length=150, null=True, blank=True)
     offre_domaine_snapshot = models.CharField(max_length=120, null=True, blank=True)
@@ -278,7 +288,6 @@ class Envoi(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        # remplir snapshot automatiquement à la création
         if not self.pk and self.offre_id:
             self.entreprise_nom_snapshot = self.offre.entreprise.nomEntreprise
             self.offre_titre_snapshot = self.offre.titre
@@ -291,8 +300,9 @@ class Envoi(models.Model):
         return f"{self.cv.nom} → {self.offre.titre}"
 
 
-
-
+# =========================
+# EntretienCreneau
+# =========================
 class EntretienCreneau(models.Model):
     MODE_CHOICES = [
         ("visio", "Visio"),
