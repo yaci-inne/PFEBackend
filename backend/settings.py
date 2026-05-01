@@ -3,6 +3,8 @@ import os
 import dj_database_url
 from datetime import timedelta
 import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -12,8 +14,8 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 INSTALLED_APPS = [
-    'cloudinary_storage',  # ← Doit être AVANT 'django.contrib.staticfiles'
-    'cloudinary',          # ← Doit être APRÈS cloudinary_storage
+    'cloudinary_storage',
+    'cloudinary',
     'main',
     'corsheaders',
     'rest_framework',
@@ -101,8 +103,6 @@ else:
             'PASSWORD': os.environ.get('PGPASSWORD', 'yassine'),
             'HOST': os.environ.get('PGHOST', 'localhost'),
             'PORT': os.environ.get('PGPORT', '5432'),
-            'ATOMIC_REQUESTS': True,
-            'CONN_MAX_AGE': 600,
         }
     }
 
@@ -115,7 +115,9 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
-# Cloudinary Configuration
+# ============================================
+# CLOUDINARY CONFIGURATION (OBLIGATOIRE !)
+# ============================================
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
     'API_KEY': os.environ.get('CLOUDINARY_API_KEY', '858696935639518'),
@@ -123,9 +125,9 @@ CLOUDINARY_STORAGE = {
 }
 
 cloudinary.config(
-    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
-    api_key=os.environ.get('CLOUDINARY_API_KEY', '858696935639518'),
-    api_secret=os.environ.get('CLOUDINARY_API_SECRET', 'ReqbNJnqgzKqF7rFvms7QNa-yfo'),
+    cloud_name=CLOUDINARY_STORAGE['CLOUD_NAME'],
+    api_key=CLOUDINARY_STORAGE['API_KEY'],
+    api_secret=CLOUDINARY_STORAGE['API_SECRET'],
     secure=True,
 )
 
@@ -136,16 +138,15 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files - Cloudinary handles everything
 MEDIA_URL = '/media/'
-# IMPORTANT: Comment MEDIA_ROOT for Cloudinary to work
-# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # ← COMMENTED
+# NE PAS DEFINIR MEDIA_ROOT - C'EST CRUCIAL !
+# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # ← COMMENTÉ
 
 # Default file storage to Cloudinary
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # Upload settings
-DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
-DATA_UPLOAD_MAX_NUMBER_FILES = 100
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
