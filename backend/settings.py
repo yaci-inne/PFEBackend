@@ -13,7 +13,7 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(','
 
 INSTALLED_APPS = [
     'main',
-    'cloudinary_storage',                        # ← doit être AVANT staticfiles
+    'cloudinary_storage',
     'cloudinary',
     'corsheaders',
     'rest_framework',
@@ -67,13 +67,6 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
-    'DEFAULT_THROTTLE_CLASSES': [],
-    'DEFAULT_THROTTLE_RATES': {},
-    'DEFAULT_PARSER_CLASSES': [
-        'rest_framework.parsers.JSONParser',
-        'rest_framework.parsers.MultiPartParser',
-        'rest_framework.parsers.FormParser',
-    ],
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
     'EXCEPTION_HANDLER': 'main.exceptions.custom_exception_handler',
 }
@@ -88,9 +81,7 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
-# ==========================
-# DATABASE (PostgreSQL)
-# ==========================
+# Database
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
@@ -117,46 +108,44 @@ else:
 
 AUTH_USER_MODEL = 'main.Utilisateur'
 
-# ==========================
-# CORS CONFIGURATION
-# ==========================
+# CORS
 CORS_ALLOWED_ORIGINS = os.environ.get(
     'CORS_ALLOWED_ORIGINS',
     'http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000'
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
-# ==========================
-# CLOUDINARY
-# ==========================
+# Cloudinary Configuration
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
-    'API_KEY':    os.environ.get('CLOUDINARY_API_KEY',    '858696935639518'),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY', '858696935639518'),
     'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', 'ReqbNJnqgzKqF7rFvms7QNa-yfo'),
 }
 
 cloudinary.config(
-    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
-    api_key    = os.environ.get('CLOUDINARY_API_KEY',    '858696935639518'),
-    api_secret = os.environ.get('CLOUDINARY_API_SECRET', 'ReqbNJnqgzKqF7rFvms7QNa-yfo'),
-    secure     = True,
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
+    api_key=os.environ.get('CLOUDINARY_API_KEY', '858696935639518'),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET', 'ReqbNJnqgzKqF7rFvms7QNa-yfo'),
+    secure=True,
 )
 
-# ==========================
-# FILES & STATIC
-# ==========================
+# Static files
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Media files - Cloudinary handles everything
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# IMPORTANT: Comment MEDIA_ROOT for Cloudinary to work
+# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # ← COMMENTED
 
-# Cloudinary pour les media (photos, CVs, etc.)
+# Default file storage to Cloudinary
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+# Upload settings
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
+DATA_UPLOAD_MAX_NUMBER_FILES = 100
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -167,9 +156,7 @@ CACHES = {
     }
 }
 
-# ==========================
-# EMAIL
-# ==========================
+# Email
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
@@ -179,4 +166,5 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'yaci.gaham@gmail.com')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'tpmvxyarzgrexone')
 
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5174')
+BACKEND_URL = os.environ.get('BACKEND_URL', 'http://localhost:8000')
 BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')

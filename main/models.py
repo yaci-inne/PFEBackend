@@ -47,8 +47,7 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     telephone = models.CharField(max_length=20, null=True, blank=True)
     dateNaissance = models.DateField(null=True, blank=True)
 
-    # ── Photo de profil ─────────────────────────────────────────
-    # upload_to doit être une STRING simple pour Cloudinary
+    # Photo de profil - upload_to simple pour Cloudinary
     photoProfil = models.ImageField(
         upload_to="photos/utilisateurs/",
         null=True,
@@ -69,10 +68,19 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
 
     @property
     def photo_url(self):
-        """Retourne l'URL de la photo ou une chaîne vide."""
+        """Retourne l'URL Cloudinary de la photo."""
         if self.photoProfil:
             try:
-                return self.photoProfil.url
+                url = self.photoProfil.url
+                # Si l'URL est déjà Cloudinary, la retourner
+                if 'cloudinary.com' in url or 'res.cloudinary.com' in url:
+                    return url
+                # Sinon, reconstruire l'URL absolue
+                from django.conf import settings
+                backend_url = getattr(settings, 'BACKEND_URL', '')
+                if backend_url and url.startswith('/'):
+                    return f"{backend_url.rstrip('/')}{url}"
+                return url
             except Exception:
                 return ""
         return ""
@@ -127,7 +135,6 @@ class CV(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cvs")
 
     nom = models.CharField(max_length=100)
-    # upload_to STRING simple pour Cloudinary
     fichier = models.FileField(upload_to="cvs/")
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="cv")
     estSupprime = models.BooleanField(default=False)
