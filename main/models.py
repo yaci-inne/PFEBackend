@@ -47,11 +47,10 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     telephone = models.CharField(max_length=20, null=True, blank=True)
     dateNaissance = models.DateField(null=True, blank=True)
 
-    # Photo de profil - upload_to simple pour Cloudinary
     photoProfil = models.ImageField(
-        upload_to="photos/utilisateurs/",
         null=True,
         blank=True,
+        # PAS de upload_to - Cloudinary gère automatiquement
     )
 
     is_active = models.BooleanField(default=True)
@@ -135,7 +134,11 @@ class CV(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cvs")
 
     nom = models.CharField(max_length=100)
-    fichier = models.FileField(upload_to="cvs/")
+    fichier = models.FileField(
+        null=True,
+        blank=True,
+        # PAS de upload_to
+    )
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="cv")
     estSupprime = models.BooleanField(default=False)
     ai_status = models.CharField(max_length=20, choices=AI_STATUS_CHOICES, default="pending")
