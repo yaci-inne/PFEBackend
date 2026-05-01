@@ -22,9 +22,33 @@ from .services.cv_ai_analyzer import analyze_cv_file
 
 
 # ========================
+# Mixin: Cloudinary URL resolution
+# ========================
+class CloudinaryUrlMixin:
+    """
+    Resolves a FileField/ImageField to its public URL.
+    Cloudinary storage returns a full https://res.cloudinary.com/... URL from field.url.
+    Falls back to request.build_absolute_uri for local dev.
+    """
+    def _resolve_url(self, field_file):
+        if not field_file:
+            return None
+        try:
+            url = field_file.url
+            if url.startswith('http://') or url.startswith('https://'):
+                return url
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(url)
+            return url
+        except Exception:
+            return None
+
+
+# ========================
 # Utilisateur (create/update)
 # ========================
-class UtilisateurSerializer(serializers.ModelSerializer):
+class UtilisateurSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
     password_confirm = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
     photo_url = serializers.SerializerMethodField(read_only=True)
@@ -93,31 +117,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         return data
 
     def get_photo_url(self, obj):
-        """Retourne l'URL Cloudinary de la photo."""
-        request = self.context.get("request")
-        if obj.photoProfil:
-            try:
-                url = obj.photoProfil.url
-                
-                # Si c'est déjà une URL Cloudinary
-                if 'cloudinary.com' in url or 'res.cloudinary.com' in url:
-                    return url
-                
-                # Si c'est une URL relative
-                if url.startswith('/'):
-                    from django.conf import settings
-                    backend_url = getattr(settings, 'BACKEND_URL', '')
-                    if backend_url:
-                        return f"{backend_url.rstrip('/')}{url}"
-                
-                # Fallback avec la requête
-                if request:
-                    return request.build_absolute_uri(url)
-                
-                return url
-            except Exception:
-                return None
-        return None
+        return self._resolve_url(obj.photoProfil)
 
     def create(self, validated_data):
         validated_data.pop("password_confirm", None)
@@ -172,7 +172,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         return instance
 
 
-class UtilisateurReadSerializer(serializers.ModelSerializer):
+class UtilisateurReadSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
     photo_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -192,28 +192,7 @@ class UtilisateurReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_photo_url(self, obj):
-        """Retourne l'URL Cloudinary de la photo."""
-        request = self.context.get("request")
-        if obj.photoProfil:
-            try:
-                url = obj.photoProfil.url
-                
-                if 'cloudinary.com' in url or 'res.cloudinary.com' in url:
-                    return url
-                
-                if url.startswith('/'):
-                    from django.conf import settings
-                    backend_url = getattr(settings, 'BACKEND_URL', '')
-                    if backend_url:
-                        return f"{backend_url.rstrip('/')}{url}"
-                
-                if request:
-                    return request.build_absolute_uri(url)
-                
-                return url
-            except Exception:
-                return None
-        return None
+        return self._resolve_url(obj.photoProfil)
 
 
 # ========================
@@ -260,7 +239,7 @@ class EntrepriseSerializer(serializers.ModelSerializer):
 # ========================
 # CV - Version Cloudinary
 # ========================
-class CVSerializer(serializers.ModelSerializer):
+class CVSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
     user_username = serializers.CharField(source="user.username", read_only=True)
     fichier_url = serializers.SerializerMethodField()
     taille_fichier = serializers.SerializerMethodField()
@@ -303,30 +282,7 @@ class CVSerializer(serializers.ModelSerializer):
         }
 
     def get_fichier_url(self, obj):
-        """Retourne l'URL Cloudinary du fichier."""
-        request = self.context.get("request")
-        if obj.fichier:
-            try:
-                url = obj.fichier.url
-                
-                # Si c'est déjà une URL Cloudinary
-                if 'cloudinary.com' in url or 'res.cloudinary.com' in url:
-                    return url
-                
-                # Si c'est une URL relative
-                if url.startswith('/'):
-                    from django.conf import settings
-                    backend_url = getattr(settings, 'BACKEND_URL', '')
-                    if backend_url:
-                        return f"{backend_url.rstrip('/')}{url}"
-                
-                if request:
-                    return request.build_absolute_uri(url)
-                
-                return url
-            except Exception:
-                return None
-        return None
+        return self._resolve_url(obj.fichier)
 
     def get_taille_fichier(self, obj):
         if obj.fichier and hasattr(obj.fichier, 'size'):
@@ -410,7 +366,7 @@ class CVSerializer(serializers.ModelSerializer):
         return instance
 
 
-class CVListSerializer(serializers.ModelSerializer):
+class CVListSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
     fichier_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -430,21 +386,7 @@ class CVListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_fichier_url(self, obj):
-        """Retourne l'URL Cloudinary du fichier."""
-        if obj.fichier:
-            try:
-                url = obj.fichier.url
-                if 'cloudinary.com' in url or 'res.cloudinary.com' in url:
-                    return url
-                if url.startswith('/'):
-                    from django.conf import settings
-                    backend_url = getattr(settings, 'BACKEND_URL', '')
-                    if backend_url:
-                        return f"{backend_url.rstrip('/')}{url}"
-                return url
-            except Exception:
-                return None
-        return None
+        return self._resolve_url(obj.fichier)
 
 
 # ========================
@@ -614,7 +556,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 # ========================
 # Envoi (CV -> Offre)
 # ========================
-class EnvoiSerializer(serializers.ModelSerializer):
+class EnvoiSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
     cv_nom = serializers.CharField(source="cv.nom", read_only=True)
     cv_type = serializers.CharField(source="cv.type", read_only=True)
     cv_fichier_url = serializers.SerializerMethodField()
@@ -655,19 +597,7 @@ class EnvoiSerializer(serializers.ModelSerializer):
         read_only_fields = ["envoiId", "dateEnvoi", "statut"]
 
     def get_cv_fichier_url(self, obj):
-        """Retourne l'URL Cloudinary du CV."""
-        request = self.context.get("request")
-        if obj.cv and obj.cv.fichier:
-            try:
-                url = obj.cv.fichier.url
-                if 'cloudinary.com' in url or 'res.cloudinary.com' in url:
-                    return url
-                if request:
-                    return request.build_absolute_uri(url)
-                return url
-            except Exception:
-                return None
-        return None
+        return self._resolve_url(obj.cv.fichier if obj.cv else None)
 
     def validate_cv(self, value):
         request = self.context.get("request")
@@ -720,7 +650,7 @@ class EnvoiSerializer(serializers.ModelSerializer):
         return Envoi.objects.create(**validated_data)
 
 
-class EnvoiListSerializer(serializers.ModelSerializer):
+class EnvoiListSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
     cv_nom = serializers.CharField(source="cv.nom", read_only=True)
     cv_fichier_url = serializers.SerializerMethodField()
     offre_titre = serializers.CharField(source="offre.titre", read_only=True)
@@ -758,18 +688,7 @@ class EnvoiListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_cv_fichier_url(self, obj):
-        request = self.context.get("request")
-        if obj.cv and obj.cv.fichier:
-            try:
-                url = obj.cv.fichier.url
-                if 'cloudinary.com' in url or 'res.cloudinary.com' in url:
-                    return url
-                if request:
-                    return request.build_absolute_uri(url)
-                return url
-            except Exception:
-                return None
-        return None
+        return self._resolve_url(obj.cv.fichier if obj.cv else None)
 
     def get_candidat_nom(self, obj):
         user = obj.cv.user

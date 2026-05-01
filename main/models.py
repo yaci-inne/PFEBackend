@@ -67,19 +67,10 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
 
     @property
     def photo_url(self):
-        """Retourne l'URL Cloudinary de la photo."""
+        """Retourne l'URL de la photo de profil. Utilise Cloudinary si configuré."""
         if self.photoProfil:
             try:
-                url = self.photoProfil.url
-                # Si l'URL est déjà Cloudinary, la retourner
-                if 'cloudinary.com' in url or 'res.cloudinary.com' in url:
-                    return url
-                # Sinon, reconstruire l'URL absolue
-                from django.conf import settings
-                backend_url = getattr(settings, 'BACKEND_URL', '')
-                if backend_url and url.startswith('/'):
-                    return f"{backend_url.rstrip('/')}{url}"
-                return url
+                return self.photoProfil.url  # Cloudinary storage retourne l'URL CDN complète
             except Exception:
                 return ""
         return ""

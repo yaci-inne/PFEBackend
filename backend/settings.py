@@ -14,19 +14,19 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 INSTALLED_APPS = [
-    'cloudinary_storage',
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',  # must come BEFORE cloudinary_storage
+    'cloudinary_storage',          # must come AFTER staticfiles
     'cloudinary',
     'main',
     'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
 ]
 
 MIDDLEWARE = [
@@ -138,10 +138,9 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files - Cloudinary handles everything
 MEDIA_URL = '/media/'
-# NE PAS DEFINIR MEDIA_ROOT - C'EST CRUCIAL !
-# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # ← COMMENTÉ
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # needed by Django internally, Cloudinary overrides actual storage
 
-# Default file storage to Cloudinary
+# Default file storage → Cloudinary (handles both ImageField and FileField)
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # Upload settings
