@@ -2,7 +2,6 @@ from pathlib import Path
 import os
 import dj_database_url
 from datetime import timedelta
-import cloudinary
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -13,8 +12,6 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(','
 
 INSTALLED_APPS = [
     'main',
-    'cloudinary_storage',                        # ← doit être AVANT staticfiles
-    'cloudinary',
     'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
@@ -127,22 +124,6 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 CORS_ALLOW_CREDENTIALS = True
 
 # ==========================
-# CLOUDINARY
-# ==========================
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
-    'API_KEY':    os.environ.get('CLOUDINARY_API_KEY',    '858696935639518'),
-    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', 'ReqbNJnqgzKqF7rFvms7QNa-yfo'),
-}
-
-cloudinary.config(
-    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
-    api_key    = os.environ.get('CLOUDINARY_API_KEY',    '858696935639518'),
-    api_secret = os.environ.get('CLOUDINARY_API_SECRET', 'ReqbNJnqgzKqF7rFvms7QNa-yfo'),
-    secure     = True,
-)
-
-# ==========================
 # FILES & STATIC
 # ==========================
 STATIC_URL = '/static/'
@@ -151,9 +132,6 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
-# Cloudinary pour les media (photos, CVs, etc.)
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
