@@ -12,9 +12,9 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 INSTALLED_APPS = [
+    'cloudinary_storage',  # ← Doit être AVANT 'django.contrib.staticfiles'
+    'cloudinary',          # ← Doit être APRÈS cloudinary_storage
     'main',
-    'cloudinary_storage',
-    'cloudinary',
     'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
