@@ -13,14 +13,15 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# ⚠️ ORDRE CRITIQUE : staticfiles AVANT cloudinary_storage
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles',  # must come BEFORE cloudinary_storage
-    'cloudinary_storage',          # must come AFTER staticfiles
+    'django.contrib.staticfiles',
+    'cloudinary_storage',
     'cloudinary',
     'main',
     'corsheaders',
@@ -83,9 +84,7 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
-# Database
 DATABASE_URL = os.environ.get('DATABASE_URL')
-
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.config(
@@ -108,7 +107,6 @@ else:
 
 AUTH_USER_MODEL = 'main.Utilisateur'
 
-# CORS
 CORS_ALLOWED_ORIGINS = os.environ.get(
     'CORS_ALLOWED_ORIGINS',
     'http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000'
@@ -116,7 +114,7 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 CORS_ALLOW_CREDENTIALS = True
 
 # ============================================
-# CLOUDINARY CONFIGURATION (OBLIGATOIRE !)
+# CLOUDINARY
 # ============================================
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
@@ -131,22 +129,16 @@ cloudinary.config(
     secure=True,
 )
 
-# Static files
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Media files - Cloudinary handles everything
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # needed by Django internally, Cloudinary overrides actual storage
-
-# Default file storage → Cloudinary (handles both ImageField and FileField)
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
-# Upload settings
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CACHES = {
@@ -156,7 +148,6 @@ CACHES = {
     }
 }
 
-# Email
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587

@@ -21,14 +21,14 @@ from .models import (
 from .services.cv_ai_analyzer import analyze_cv_file
 
 
+
 # ========================
-# Mixin: Cloudinary URL resolution
+# Mixin URL Cloudinary
 # ========================
 class CloudinaryUrlMixin:
     """
-    Resolves a FileField/ImageField to its public URL.
-    Cloudinary storage returns a full https://res.cloudinary.com/... URL from field.url.
-    Falls back to request.build_absolute_uri for local dev.
+    Retourne l'URL publique d'un FileField/ImageField.
+    Avec Cloudinary storage, .url retourne directement https://res.cloudinary.com/...
     """
     def _resolve_url(self, field_file):
         if not field_file:
@@ -118,6 +118,7 @@ class UtilisateurSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
 
     def get_photo_url(self, obj):
         return self._resolve_url(obj.photoProfil)
+        return None
 
     def create(self, validated_data):
         validated_data.pop("password_confirm", None)
@@ -193,6 +194,7 @@ class UtilisateurReadSerializer(CloudinaryUrlMixin, serializers.ModelSerializer)
 
     def get_photo_url(self, obj):
         return self._resolve_url(obj.photoProfil)
+        return None
 
 
 # ========================
@@ -283,6 +285,7 @@ class CVSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
 
     def get_fichier_url(self, obj):
         return self._resolve_url(obj.fichier)
+        return None
 
     def get_taille_fichier(self, obj):
         if obj.fichier and hasattr(obj.fichier, 'size'):
@@ -387,6 +390,7 @@ class CVListSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
 
     def get_fichier_url(self, obj):
         return self._resolve_url(obj.fichier)
+        return None
 
 
 # ========================
@@ -598,6 +602,7 @@ class EnvoiSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
 
     def get_cv_fichier_url(self, obj):
         return self._resolve_url(obj.cv.fichier if obj.cv else None)
+        return None
 
     def validate_cv(self, value):
         request = self.context.get("request")
@@ -689,6 +694,7 @@ class EnvoiListSerializer(CloudinaryUrlMixin, serializers.ModelSerializer):
 
     def get_cv_fichier_url(self, obj):
         return self._resolve_url(obj.cv.fichier if obj.cv else None)
+        return None
 
     def get_candidat_nom(self, obj):
         user = obj.cv.user

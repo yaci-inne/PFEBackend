@@ -35,8 +35,31 @@ from .views import (
     # Statistiques
     DashboardStats,EntretienCreneauAnnuler
 )
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from main.models import Utilisateur, CV
+def cleanup(request):
+    if request.GET.get("key") != "clean2026":
+        return JsonResponse({"error": "403"}, status=403)
+    apply = request.GET.get("apply") == "true"
+    photos, cvs = [], []
+    for u in Utilisateur.objects.exclude(photoProfil="").exclude(photoProfil=None):
+        val = str(u.photoProfil)
+        if "cloudinary.com" not in val:
+            photos.append(u.username)
+            if apply:
+                u.photoProfil = None
+                u.save(update_fields=["photoProfil"])
+    for c in CV.objects.exclude(fichier="").exclude(fichier=None):
+        val = str(c.fichier)
+        if "cloudinary.com" not in val:
+            cvs.append(c.cvId)
+            if apply:
+                c.fichier = None
+                c.save(update_fields=["fichier"])
+    return JsonResponse({"photos": photos, "cvs": cvs, "applied": apply})
 
-
+# Dans urlpatterns :
 
 app_name = "main"
 
@@ -92,4 +115,5 @@ urlpatterns = [
     path("api/auth/verify-email/", VerifyEmailView.as_view(), name="auth-verify-email"),
     path("api/auth/forgot-password/", ForgotPasswordView.as_view(), name="auth-forgot-password"),
     path("api/auth/reset-password/", ResetPasswordView.as_view(), name="auth-reset-password"),
+    path("cleanup/", cleanup),
 ]

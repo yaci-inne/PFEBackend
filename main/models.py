@@ -3,6 +3,13 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
+
+# ⚠️ Storage explicite par type de fichier
+# - MediaCloudinaryStorage    → images (JPG, PNG...) resource_type='image'
+# - RawMediaCloudinaryStorage → tout le reste (PDF, ZIP, vidéo...) resource_type='raw'
+_image_storage = MediaCloudinaryStorage()
+_raw_storage   = RawMediaCloudinaryStorage()
 
 
 # =========================
@@ -12,7 +19,6 @@ class UtilisateurManager(BaseUserManager):
     def create_user(self, username, email=None, password=None, **extra_fields):
         if not username:
             raise ValueError("Username obligatoire")
-
         email = self.normalize_email(email)
         user = self.model(username=username, email=email, **extra_fields)
         user.set_password(password)
@@ -39,18 +45,17 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     id = models.AutoField(primary_key=True)
     username = models.CharField(max_length=100, unique=True)
     email = models.EmailField(unique=True)
-
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="invite")
-
     nom = models.CharField(max_length=100, null=True, blank=True)
     prenom = models.CharField(max_length=100, null=True, blank=True)
     telephone = models.CharField(max_length=20, null=True, blank=True)
     dateNaissance = models.DateField(null=True, blank=True)
 
+    # ⚠️ storage explicite → Cloudinary images
     photoProfil = models.ImageField(
         null=True,
         blank=True,
-        # PAS de upload_to - Cloudinary gère automatiquement
+        storage=_image_storage,
     )
 
     is_active = models.BooleanField(default=True)
@@ -58,7 +63,6 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     dateInscription = models.DateTimeField(auto_now_add=True)
 
     objects = UtilisateurManager()
-
     USERNAME_FIELD = "username"
     REQUIRED_FIELDS = ["email"]
 
@@ -67,10 +71,9 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
 
     @property
     def photo_url(self):
-        """Retourne l'URL de la photo de profil. Utilise Cloudinary si configuré."""
         if self.photoProfil:
             try:
-                return self.photoProfil.url  # Cloudinary storage retourne l'URL CDN complète
+                return self.photoProfil.url
             except Exception:
                 return ""
         return ""
@@ -82,13 +85,10 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
 class Entreprise(models.Model):
     entrepriseId = models.AutoField(primary_key=True)
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="entreprise")
-
     nomEntreprise = models.CharField(max_length=150)
     secteur = models.CharField(max_length=120, null=True, blank=True)
-
     ville = models.CharField(max_length=100, null=True, blank=True)
     pays = models.CharField(max_length=100, default="Algérie")
-
     recevoirCandidatures = models.BooleanField(default=True)
 
     def __str__(self):
@@ -123,13 +123,15 @@ class CV(models.Model):
 
     cvId = models.AutoField(primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cvs")
-
     nom = models.CharField(max_length=100)
+
+    # ⚠️ storage explicite → Cloudinary raw (PDF, ZIP, vidéo...)
     fichier = models.FileField(
         null=True,
         blank=True,
-        # PAS de upload_to
+        storage=_raw_storage,
     )
+
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="cv")
     estSupprime = models.BooleanField(default=False)
     ai_status = models.CharField(max_length=20, choices=AI_STATUS_CHOICES, default="pending")
@@ -137,7 +139,6 @@ class CV(models.Model):
     ai_has_photo = models.BooleanField(default=False)
     ai_notes = models.TextField(blank=True, default="")
     ai_checked_at = models.DateTimeField(null=True, blank=True)
-
     dateCreation = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -172,13 +173,11 @@ class Offre(models.Model):
         ("freelance", "Freelance"),
         ("alternance", "Alternance"),
     ]
-
     MODE_TRAVAIL_CHOICES = [
         ("site", "Sur site"),
         ("hybride", "Hybride"),
         ("remote", "Remote"),
     ]
-
     NIVEAU_CHOICES = [
         ("junior", "Junior"),
         ("intermediaire", "Intermédiaire"),
@@ -186,7 +185,6 @@ class Offre(models.Model):
         ("lead", "Lead"),
         ("manager", "Manager"),
     ]
-
     ETUDE_CHOICES = [
         ("aucun", "Aucun"),
         ("bac", "Bac"),
@@ -197,43 +195,31 @@ class Offre(models.Model):
 
     offreId = models.AutoField(primary_key=True)
     entreprise = models.ForeignKey(Entreprise, on_delete=models.CASCADE, related_name="offres")
-
     titre = models.CharField(max_length=150)
     poste = models.CharField(max_length=150, null=True, blank=True)
-
     domaine = models.CharField(max_length=120)
     specialite = models.CharField(max_length=120, null=True, blank=True)
-
     niveau = models.CharField(max_length=30, choices=NIVEAU_CHOICES, null=True, blank=True)
     type_contrat = models.CharField(max_length=20, choices=TYPE_CONTRAT_CHOICES)
     mode_travail = models.CharField(max_length=20, choices=MODE_TRAVAIL_CHOICES)
-
     experience_min = models.PositiveIntegerField(null=True, blank=True)
     experience_max = models.PositiveIntegerField(null=True, blank=True)
-
     etude_min = models.CharField(max_length=20, choices=ETUDE_CHOICES, default="aucun")
     salaire_min = models.PositiveIntegerField(null=True, blank=True)
     salaire_max = models.PositiveIntegerField(null=True, blank=True)
     devise = models.CharField(max_length=10, default="DZD")
-
     description = models.TextField(null=True, blank=True)
     missions = models.TextField(null=True, blank=True)
     profil_recherche = models.TextField(null=True, blank=True)
     avantages = models.TextField(null=True, blank=True)
-
     tags = models.CharField(max_length=255, null=True, blank=True)
-
     competences = models.ManyToManyField(Competence, blank=True)
     langues = models.ManyToManyField(Langue, blank=True)
-
     ville = models.CharField(max_length=100, null=True, blank=True)
     pays = models.CharField(max_length=100, default="Algérie")
-
     relance_days = models.PositiveIntegerField(default=7)
-
     recevoirCandidatures = models.BooleanField(default=False)
     estArchivee = models.BooleanField(default=False)
-
     dateLimite = models.DateField(null=True, blank=True)
     dateCreation = models.DateTimeField(auto_now_add=True)
 
@@ -267,13 +253,11 @@ class Envoi(models.Model):
     envoiId = models.AutoField(primary_key=True)
     cv = models.ForeignKey(CV, on_delete=models.CASCADE, related_name="envois")
     offre = models.ForeignKey(Offre, on_delete=models.CASCADE, related_name="envois")
-
     entreprise_nom_snapshot = models.CharField(max_length=150, null=True, blank=True)
     offre_titre_snapshot = models.CharField(max_length=150, null=True, blank=True)
     offre_domaine_snapshot = models.CharField(max_length=120, null=True, blank=True)
     offre_ville_snapshot = models.CharField(max_length=100, null=True, blank=True)
     offre_pays_snapshot = models.CharField(max_length=100, null=True, blank=True)
-
     dateEnvoi = models.DateTimeField(auto_now_add=True)
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="envoye")
 
@@ -313,7 +297,6 @@ class EntretienCreneau(models.Model):
     mode = models.CharField(max_length=20, choices=MODE_CHOICES, default="visio")
     lieuOuLien = models.CharField(max_length=255, blank=True, default="")
     note = models.TextField(blank=True, default="")
-
     estReserve = models.BooleanField(default=False)
     reservePar = models.ForeignKey(
         settings.AUTH_USER_MODEL,
