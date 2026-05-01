@@ -29,11 +29,6 @@ class UtilisateurManager(BaseUserManager):
 # =========================
 # Utilisateur
 # =========================
-def user_photo_upload_path(instance, filename):
-    """Stocke dans : media/photos/utilisateurs/<user_id>/<filename>"""
-    return f"photos/utilisateurs/{instance.pk}/{filename}"
-
-
 class Utilisateur(AbstractBaseUser, PermissionsMixin):
     TYPE_CHOICES = [
         ("invite", "Invité"),
@@ -52,10 +47,10 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     telephone = models.CharField(max_length=20, null=True, blank=True)
     dateNaissance = models.DateField(null=True, blank=True)
 
-    # ── Photo de profil ───────────────────────────────────────
-    # Renommé pour utiliser le chemin dynamique par user_id
+    # ── Photo de profil ─────────────────────────────────────────
+    # upload_to doit être une STRING simple pour Cloudinary
     photoProfil = models.ImageField(
-        upload_to=user_photo_upload_path,
+        upload_to="photos/utilisateurs/",
         null=True,
         blank=True,
     )
@@ -74,7 +69,7 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
 
     @property
     def photo_url(self):
-        """Retourne l'URL relative de la photo ou une chaîne vide."""
+        """Retourne l'URL de la photo ou une chaîne vide."""
         if self.photoProfil:
             try:
                 return self.photoProfil.url
@@ -132,6 +127,7 @@ class CV(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cvs")
 
     nom = models.CharField(max_length=100)
+    # upload_to STRING simple pour Cloudinary
     fichier = models.FileField(upload_to="cvs/")
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="cv")
     estSupprime = models.BooleanField(default=False)
