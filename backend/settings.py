@@ -128,7 +128,12 @@ cloudinary.config(
     api_secret=CLOUDINARY_STORAGE['API_SECRET'],
     secure=True,
 )
-
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dlh7wfvf7'),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY', '858696935639518'),
+    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', 'ReqbNJnqgzKqF7rFvms7QNa-yfo'),
+    'ACCESS_MODE': 'public',   # ← ajoute ça
+}
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
