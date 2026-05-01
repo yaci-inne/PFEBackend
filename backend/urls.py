@@ -27,3 +27,5 @@ urlpatterns = [
     path('api/accessToken/',CustomTokenObtainPairView.as_view(),name='tokenAccess'),
     path('api/refreshToken/',TokenRefreshView.as_view(),name='tokenRefresh')
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

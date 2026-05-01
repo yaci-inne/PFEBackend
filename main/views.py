@@ -124,16 +124,18 @@ class UtilisateurDetail(APIView):
     def patch(self, request, pk):
         user = self.get_object(pk, request)
 
-        # ── Gestion suppression photo ──────────────────────────
-        # Le frontend envoie photoProfil="" pour demander la suppression
+        # ── Gestion suppression photo ──────────────────────────────────────
+        # Le frontend envoie photoProfil="" SANS fichier dans request.FILES.
+        # Si un vrai fichier est présent dans request.FILES, c'est un upload
+        # → on NE doit PAS supprimer.
+        has_real_file = "photoProfil" in request.FILES
         raw_photo = request.data.get("photoProfil", None)
-        if raw_photo == "" or raw_photo == "null":
+
+        if not has_real_file and (raw_photo == "" or raw_photo == "null"):
             if user.photoProfil:
-                user.photoProfil.delete(save=False)   # supprime le fichier du disque
+                user.photoProfil.delete(save=False)
                 user.photoProfil = None
                 user.save(update_fields=["photoProfil"])
-            # On renvoie directement le profil mis à jour sans passer par le serializer
-            # (évite de revalider un champ photo vide)
             return Response(
                 {
                     "message": "Photo supprimée avec succès.",
@@ -146,7 +148,6 @@ class UtilisateurDetail(APIView):
         serializer = UtilisateurSerializer(user, data=request.data, partial=True, context={"request": request})
         if serializer.is_valid():
             serializer.save()
-            # Recharge depuis la BDD pour avoir photo_url à jour
             user.refresh_from_db()
             return Response(
                 {
@@ -156,7 +157,6 @@ class UtilisateurDetail(APIView):
                 status=status.HTTP_200_OK,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
     def delete(self, request, pk):
         user = self.get_object(pk, request)
         user.is_active = False
