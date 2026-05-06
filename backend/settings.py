@@ -70,9 +70,12 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
-    'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
+    # 'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S', # Removed to use standard ISO-8601 with timezones
     'EXCEPTION_HANDLER': 'main.exceptions.custom_exception_handler',
 }
+
+TIME_ZONE = 'UTC'
+USE_TZ = True
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
