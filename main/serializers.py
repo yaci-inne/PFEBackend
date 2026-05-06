@@ -17,6 +17,7 @@ from .models import (
     Competence,
     Langue,
     EntretienCreneau,
+    Notification,
 )
 from .services.cv_ai_analyzer import analyze_cv_file
 
@@ -774,3 +775,13 @@ class EnvoiStatutSerializer(serializers.ModelSerializer):
         if value not in valid_statuts:
             raise serializers.ValidationError(f"Statut invalide. Choix : {', '.join(valid_statuts)}")
         return value
+
+
+# ========================
+# Notification
+# ========================
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ["notificationId", "titre", "message", "type", "lu", "lien", "dateCreation"]
+        read_only_fields = fields

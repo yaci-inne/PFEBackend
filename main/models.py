@@ -317,3 +317,32 @@ class EntretienCreneau(models.Model):
 
     def __str__(self):
         return f"Entretien #{self.creneauId} - Envoi {self.envoi_id}"
+
+
+# =========================
+# Notification
+# =========================
+class Notification(models.Model):
+    TYPE_CHOICES = [
+        ("rendez_vous", "Rendez-vous"),
+        ("candidature", "Candidature"),
+        ("system", "Système"),
+    ]
+
+    notificationId = models.AutoField(primary_key=True)
+    utilisateur = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
+    titre = models.CharField(max_length=150)
+    message = models.TextField()
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="system")
+    lu = models.BooleanField(default=False)
+    lien = models.CharField(max_length=255, null=True, blank=True)
+    dateCreation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-dateCreation"]
+        indexes = [
+            models.Index(fields=["utilisateur", "lu", "dateCreation"]),
+        ]
+
+    def __str__(self):
+        return f"{self.titre} - {self.utilisateur.username}"

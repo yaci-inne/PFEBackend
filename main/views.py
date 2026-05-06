@@ -12,7 +12,7 @@ from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Utilisateur, Entreprise, CV, Envoi, Offre, EntretienCreneau
+from .models import Utilisateur, Entreprise, CV, Envoi, Offre, EntretienCreneau, Notification
 from .services.cv_ai_analyzer import analyze_cv_file
 from .serializers import (
     UtilisateurSerializer,
@@ -28,9 +28,10 @@ from .serializers import (
     EntretienCreneauCreateSerializer,
     EntretienCreneauReadSerializer,
     CustomTokenObtainPairSerializer,
+    NotificationSerializer,
 )
 
-
+from rest_framework import viewsets
 # ==========================
 # Custom Permissions
 # ==========================
@@ -579,6 +580,15 @@ class EnvoiListCreate(APIView):
             if ser.is_valid():
                 envoi = ser.save()
                 created_ids.append(envoi.envoiId)
+                
+                candidat_nom = f"{cv.user.prenom} {cv.user.nom}" if cv.user.prenom and cv.user.nom else cv.user.username
+                Notification.objects.create(
+                    utilisateur=offre.entreprise.user,
+                    titre="Nouvelle candidature",
+                    message=f"Le candidat {candidat_nom} a postulé à l'offre '{offre.titre}'.",
+                    type="candidature",
+                    lien="/entreprise/candidatures"
+                )
             else:
                 refused.append(
                     {
@@ -674,6 +684,17 @@ class EnvoiDetail(APIView):
         serializer = EnvoiStatutSerializer(envoi, data=request.data, partial=True, context={"request": request})
         if serializer.is_valid():
             serializer.save()
+            
+            if request.data.get("statut") in ["accepte", "refuse"]:
+                statut_str = "acceptée" if request.data.get("statut") == "accepte" else "refusée"
+                Notification.objects.create(
+                    utilisateur=envoi.cv.user,
+                    titre=f"Candidature {statut_str}",
+                    message=f"Votre candidature pour l'offre '{envoi.offre.titre}' chez {envoi.offre.entreprise.nomEntreprise} a été {statut_str}.",
+                    type="candidature",
+                    lien="/candidatures"
+                )
+
             return Response(
                 {
                     "message": f"Statut mis à jour: {envoi.get_statut_display()}",
@@ -737,6 +758,15 @@ class EntretienCreneauListCreate(APIView):
 
         if is_batch:
             created = [EntretienCreneau.objects.create(envoi=envoi, **item) for item in serializer.validated_data]
+            
+            Notification.objects.create(
+                utilisateur=envoi.cv.user,
+                titre="Nouveaux créneaux d'entretien",
+                message=f"L'entreprise {envoi.offre.entreprise.nomEntreprise} a proposé {len(created)} créneau(x) pour l'offre '{envoi.offre.titre}'.",
+                type="rendez_vous",
+                lien="/candidatures"
+            )
+
             output = EntretienCreneauReadSerializer(created, many=True, context={"request": request}).data
             return Response(
                 {"message": f"{len(created)} creneaux proposes avec succes.", "creneaux": output},
@@ -744,6 +774,15 @@ class EntretienCreneauListCreate(APIView):
             )
 
         creneau = serializer.save(envoi=envoi)
+        
+        Notification.objects.create(
+            utilisateur=envoi.cv.user,
+            titre="Nouveau créneau d'entretien",
+            message=f"L'entreprise {envoi.offre.entreprise.nomEntreprise} a proposé un créneau d'entretien pour l'offre '{envoi.offre.titre}'.",
+            type="rendez_vous",
+            lien="/candidatures"
+        )
+        
         output = EntretienCreneauReadSerializer(creneau, context={"request": request}).data
         return Response({"message": "Creneau propose avec succes.", "creneau": output}, status=status.HTTP_201_CREATED)
 
@@ -779,6 +818,15 @@ class EntretienCreneauReserve(APIView):
         creneau.reservePar = request.user
         creneau.dateReservation = timezone.now()
         creneau.save(update_fields=["estReserve", "reservePar", "dateReservation"])
+
+        candidat_nom = f"{request.user.prenom} {request.user.nom}" if request.user.prenom and request.user.nom else request.user.username
+        Notification.objects.create(
+            utilisateur=creneau.envoi.offre.entreprise.user,
+            titre="Créneau réservé",
+            message=f"Le candidat {candidat_nom} a réservé un créneau d'entretien pour l'offre '{creneau.envoi.offre.titre}'.",
+            type="rendez_vous",
+            lien="/entreprise/candidatures"
+        )
 
         serializer = EntretienCreneauReadSerializer(creneau, context={"request": request})
         return Response({"message": "Creneau reserve avec succes.", "creneau": serializer.data}, status=status.HTTP_200_OK)
@@ -912,4 +960,47 @@ class EntretienCreneauAnnuler(APIView):
         creneau.dateReservation = None
         creneau.save(update_fields=["estReserve", "reservePar", "dateReservation"])
 
+        if request.user.type == "candidat":
+            candidat_nom = f"{request.user.prenom} {request.user.nom}" if request.user.prenom and request.user.nom else request.user.username
+            Notification.objects.create(
+                utilisateur=creneau.envoi.offre.entreprise.user,
+                titre="Entretien annulé",
+                message=f"Le candidat {candidat_nom} a annulé son rendez-vous pour l'offre '{creneau.envoi.offre.titre}'.",
+                type="rendez_vous",
+                lien="/entreprise/candidatures"
+            )
+        elif request.user.type == "entreprise":
+            Notification.objects.create(
+                utilisateur=creneau.envoi.cv.user,
+                titre="Entretien annulé",
+                message=f"L'entreprise {creneau.envoi.offre.entreprise.nomEntreprise} a annulé le rendez-vous pour l'offre '{creneau.envoi.offre.titre}'.",
+                type="rendez_vous",
+                lien="/candidatures"
+            )
+
         return Response({"message": "Creneau annule avec succes."}, status=status.HTTP_200_OK)
+
+
+# ==========================
+# Notifications
+# ==========================
+from rest_framework.decorators import action
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(utilisateur=self.request.user)
+
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        self.get_queryset().update(lu=True)
+        return Response({"message": "Toutes les notifications ont été marquées comme lues."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['patch'])
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.lu = True
+        notification.save(update_fields=['lu'])
+        return Response(self.get_serializer(notification).data, status=status.HTTP_200_OK)

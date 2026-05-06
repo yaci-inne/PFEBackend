@@ -1,5 +1,6 @@
 # main/urls.py
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views_auth import (
     RegisterView,
     VerifyEmailView,
@@ -33,14 +34,21 @@ from .views import (
     EntretienMeetingInfo,
 
     # Statistiques
-    DashboardStats,EntretienCreneauAnnuler
+    DashboardStats,EntretienCreneauAnnuler,
+    
+    # Notifications
+    NotificationViewSet
 )
+
+router = DefaultRouter()
+router.register(r"notifications", NotificationViewSet, basename="notifications")
 
 
 
 app_name = "main"
 
 urlpatterns = [
+    path("", include(router.urls)),
     # ==========================
     # Utilisateurs
     # ==========================
