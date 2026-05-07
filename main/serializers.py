@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
+from django.contrib.auth import authenticate
 from .models import (
     Utilisateur,
     Entreprise,
@@ -546,8 +546,45 @@ class OffreListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        identifier = attrs.get('username')
+        password = attrs.get('password')
+        
+        if not identifier or not password:
+            raise serializers.ValidationError('Identifiant et mot de passe requis.')
+        
+        user = None
+        
+        # Si c'est un email, chercher l'utilisateur par email
+        if '@' in identifier:
+            try:
+                user_obj = Utilisateur.objects.get(email=identifier)
+                user = authenticate(username=user_obj.username, password=password)
+            except Utilisateur.DoesNotExist:
+                pass
+        
+        # Sinon chercher par username
+        if user is None:
+            user = authenticate(username=identifier, password=password)
+        
+        if user is None:
+            raise serializers.ValidationError('Identifiants invalides.')
+        
+        if not user.is_active:
+            raise serializers.ValidationError('Ce compte est désactivé.')
+        
+        refresh = self.get_token(user)
+        
+        return {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'user_id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'type': user.type,
+        }
+    
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
