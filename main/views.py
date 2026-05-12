@@ -169,7 +169,11 @@ class UtilisateurDetail(APIView):
 # Entreprise APIView
 # ==========================
 class EntrepriseListCreate(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get(self, request):
         entreprises = (
@@ -208,7 +212,11 @@ class EntrepriseListCreate(APIView):
 
 
 class EntrepriseDetail(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get_object(self, pk):
         return get_object_or_404(Entreprise, pk=pk)
@@ -310,7 +318,11 @@ class CVDetail(APIView):
 # OFFRES APIViews
 # ==========================
 class OffreList(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get(self, request):
         qs = Offre.objects.filter(
